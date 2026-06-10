@@ -1,4 +1,5 @@
-﻿// --- CẤU HÌNH FIREBASE ---
+﻿try {
+// --- CẤU HÌNH FIREBASE ---
 // Bạn cần lấy thông tin này từ Firebase Console (https://console.firebase.google.com/)
 const firebaseConfig = {
     apiKey: "AIzaSyAXLLILSZAmquyIJCXOS3z8ZiPIBvZoQio",
@@ -2203,6 +2204,7 @@ function saveChangesToCloud() {
             userName: userName
         };
 
+        if (typeof firebase !== 'undefined') {
         firebase.database().ref('latest_soq').transaction((currentData) => {
             try {
                 // Kiểm tra cùng ngày (dateStr) để gộp thay đổi của mọi người dùng
@@ -2246,41 +2248,12 @@ function saveChangesToCloud() {
                     // Đồng bộ metadata mới nhất
                     currentData.filename = scheduleFileName;
                     currentData.timestamp = now.getTime();
-                    currentData.userName = user        if (typeof firebase !== 'undefined') {
-            btnSaveChanges.innerHTML = "⏳ Đang lưu...";
-            saveChangesToCloud().then((committed) => {
-                if (committed) {
-                    btnSaveChanges.innerHTML = "✔️ Đã lưu";
-                } else {
-                    btnSaveChanges.innerHTML = "✔️ Đã lưu (Không đổi)";
+                    currentData.userName = userName;
+
+                    // Sanitize before returning to prevent Firebase SDK crash due to undefined properties
+                    return JSON.parse(JSON.stringify(currentData));
                 }
-                setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
-            }).catch(err => {
-                alert("Lỗi khi lưu lên Cloud: " + err.message);
-                btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
-            });
-        } else {
-            alert("Lỗi: Firebase chưa được khởi tạo.");
-        }
-    });
-}�T" nhưng chưa nhập đủ toàn bộ các mã sản phẩm:\n- ${missingStores.join('\n- ')}\n\nBạn có chắc chắn muốn lưu lại không?`);
-            if (!confirmSave) return;
-        }
 
-        if (typeof firebase !== 'undefined') {
-            btnSaveChanges.innerHTML = "⏳ Đang lưu...";
-
-                        if (!modified) {
-                            // Cố tình sửa 1 trường nhỏ để Firebase bắt buộc nhận diện có thay đổi (force commit)
-                            currentData.lastActive = now.getTime();
-                        }
-
-                        currentData.timestamp = now.getTime();
-                        currentData.userName = userName; 
-                        
-                        // Sanitize before returning to prevent Firebase SDK crash due to undefined properties
-                        return JSON.parse(JSON.stringify(currentData));
-                    }
                     
                     let newPayload = JSON.parse(JSON.stringify(payload));
                     if (Array.isArray(newPayload.results)) {
@@ -3746,3 +3719,5 @@ if (weeklySearchProduct) {
 if (btnExportWeekly) {
     btnExportWeekly.addEventListener('click', exportWeeklyReviewToExcel);
 }
+
+} catch (e) { alert('LỖI THẬT SỰ TRONG APP.JS: ' + e.message + ' ' + e.stack); }
