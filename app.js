@@ -1961,14 +1961,27 @@ btnCalculate.addEventListener('click', () => {
                 return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
             };
 
-            let expectedInvAtArrival = Math.max(0, finalInv + finalInput - demandLeadTime);
-
             let strT = formatDateStr(T);
             let strPrevInv = formatDateStr(invData.prevInvDate);
             let strPrevInput = formatDateStr(inputData.prevInputDate);
 
-            let invTooltip = `Tồn kho lúc T (${strT}): [ ${finalInv.toFixed(2)} ]\n- Trừ nhu cầu bán chờ hàng (${leadTimeArrival.toFixed(1)} ngày): -${demandLeadTime.toFixed(2)}\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
-            let inputTooltip = `Nhập/Giao hàng lúc T (${strT}): [ ${finalInput.toFixed(2)} ]`;
+            // Tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu (Ví dụ: T là 12/06 nhưng Tồn kho chỉ cập nhật đến 11/06)
+            let strInvDate = strT;
+            if (finalInv === 0 && invData.prevInvDate > 0) {
+                finalInv = prevInv;
+                strInvDate = strPrevInv;
+            }
+
+            let strInputDate = strT;
+            if (finalInput === 0 && inputData.prevInputDate > 0) {
+                finalInput = prevInput;
+                strInputDate = strPrevInput;
+            }
+
+            let expectedInvAtArrival = Math.max(0, finalInv + finalInput - demandLeadTime);
+
+            let invTooltip = `Tồn kho ghi nhận lúc (${strInvDate}): [ ${finalInv.toFixed(2)} ]\n- Trừ nhu cầu bán chờ hàng (${leadTimeArrival.toFixed(1)} ngày): -${demandLeadTime.toFixed(2)}\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
+            let inputTooltip = `Nhập/Giao hàng ghi nhận lúc (${strInputDate}): [ ${finalInput.toFixed(2)} ]`;
             let disposalTooltip = `KHÔNG PHẠT HỦY (Ratio quá thấp hoặc không đủ gốc chia)`;
 
             let baseForDisposal = prevInv + prevInput;
