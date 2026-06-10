@@ -1,4 +1,8 @@
-﻿try {
+window.onerror = function(message, source, lineno, colno, error) {
+    alert("🚨 HỆ THỐNG PHÁT HIỆN LỖI:\n" + message + "\nTại dòng: " + lineno);
+    return false;
+};
+
 // --- CẤU HÌNH FIREBASE ---
 // Bạn cần lấy thông tin này từ Firebase Console (https://console.firebase.google.com/)
 const firebaseConfig = {
@@ -384,9 +388,20 @@ function extractJsonDataCleanly(worksheet) {
         }
     }
 
-    const headersRaw = rawArr[headerIdx] || [];
-    const headersPrefix = headerIdx > 0 ? (rawArr[headerIdx - 1] || []) : [];
+    const headersRaw = [...(rawArr[headerIdx] || [])];
+    let headersPrefix = headerIdx > 0 ? (rawArr[headerIdx - 1] || []) : [];
     
+    // CUSTOM FIX: Lấy "Ngày giao hàng" từ dòng đầu tiên (dòng 1) cho file Lịch giao hàng
+    if (rawArr[0] && rawArr[0].some(c => typeof c === 'string' && c.toLowerCase().includes('ngày giao hàng'))) {
+        for (let j = 0; j < headersRaw.length; j++) {
+            let topCell = rawArr[0][j];
+            if (topCell && typeof topCell === 'string' && !topCell.toLowerCase().includes('ngày giao hàng')) {
+                headersRaw[j] = topCell;
+            }
+        }
+        headersPrefix = []; // Xóa prefix để tránh việc nối chuỗi ("Thứ 2" + "01-Thg6")
+    }
+
     let headers = headersRaw.map((h, j) => {
         let prefix = headersPrefix[j] ? String(headersPrefix[j]).trim() + '_' : '';
         return normalizeKey(prefix + h);
@@ -396,6 +411,7 @@ function extractJsonDataCleanly(worksheet) {
     let numericHeadersCount = headersRaw.filter(h => typeof h === 'number' && h > 40000).length;
     // Tăng cường kiểm tra cả headersPrefix nếu có
     if (headersPrefix.length > 0) numericHeadersCount += headersPrefix.filter(h => typeof h === 'number' && h > 40000).length;
+
 
     if (numericHeadersCount > 5) {
         // Đây là dạng file Lịch Matrix. Ép các cột cố định (0: Type, 1: SAP, 4: Name)
@@ -1079,82 +1095,38 @@ btnCalculate.addEventListener('click', () => {
 
                         let headerWeekdayIdx = getWeekdayIdx(k);
 
-                        // Nếu Header file Lịch là THỨ (VD: Friday, T2)
-                        if (headerWeekdayIdx !== -1) {
-                            if (isTargetWeekday) {
-                                match = (headerWeekdayIdx === currentTargetNum);
-                            } else if (impliedWeekdayIdx !== -1) {
-                                match = (headerWeekdayIdx === impliedWeekdayIdx);
-                            }
-                        } else {
-                        // Xử lý Header phức hợp (vd: 01-Thg4_Wednesday) hoặc Header đơn thuần
                         let kClean = k.toLowerCase();
-                        
-                        // Lấy số ngày của mục tiêu (VD: 1 hoặc 01)
-                        let tNum = new Date(targetTimestamp).getDate().toString();
+                        let tNum = targetDateStr; // e.g. "11"
                         let tPadded = tNum.padStart(2, '0');
 
-                        // 1. So khớp Số ngày trực tiếp: "01", "1", "1-", "01-"
-                        let dateMatch = kClean.startsWith(tNum + '-') || kClean.startsWith(tPadded + '-') || 
-                                       kClean.includes('_' + tNum + '-') || kClean.includes('_' + tPadded + '-');
-                        
-                        // 2. So khớp Số ngày viết liền (Ví dụ: 01thg4)
-                        if (!dateMatch) {
-                            let m = kClean.match(/^(\d{1,2})/);
-                            if (m && (m[1] === tNum || m[1] === tPadded)) dateMatch = true;
-                        }
-
-                        // 3. So khớp Serial Date nếu có trong Key
-                        let serialMatch = false;
-                        let serialInKey = kClean.match(/(\d{5})/);
-                        if (serialInKey) {
-                            headerTs = parseDateStrToTime(Number(serialInKey[1]));
-                            if (targetTimestamp > 0 && headerTs > 0) {
-                                let d1 = new Date(targetTimestamp);
-                                let d2 = new Date(headerTs);
-                                serialMatch = (d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate());
-                            }
-                        }
-
-                        // NEW: Trích xuất Timestamp cho tất cả các cột nếu có định dạng ngày (vd: 01-thg4)
-                        if (headerTs === 0) {
-                            // Thử bóc tách ngày/tháng từ chuỗi "01-thg4"
-                            let mDate = kClean.match(/^(\d{1,2})[^\d]+(\d{1,2})/);
-                            if (mDate) {
-                                let dd = parseInt(mDate[1]);
-                                let mm = parseInt(mDate[2]) - 1;
-                                let yyyy = new Date(targetTimestamp).getFullYear();
-                                let dTemp = new Date(yyyy, mm, dd);
-                                // Nếu ngày quá xa mục tiêu (vd: tháng 12 so với tháng 1), lùi/tiến năm
-                                headerTs = dTemp.getTime();
-                            } else {
-                                // Thử bóc tách ngày đơn thuần (vd: 01) -> Giả định cùng tháng/năm với target
-                                let mDay = kClean.match(/^(\d{1,2})/);
-                                if (mDay) {
-                                    let dd = parseInt(mDay[1]);
-                                    let tDate = new Date(targetTimestamp);
-                                    let dTemp = new Date(tDate.getFullYear(), tDate.getMonth(), dd);
-                                    // Xử lý rollover tháng nếu cần (vd: target là 31/3, header là 1)
-                                    if (dd < tDate.getDate() - 15) dTemp.setMonth(dTemp.getMonth() + 1);
-                                    if (dd > tDate.getDate() + 15) dTemp.setMonth(dTemp.getMonth() - 1);
-                                    headerTs = dTemp.getTime();
-                                }
-                            }
-                        }
-                        
-                        // ƯU TIÊN: Nếu Header chứa thông tin NGÀY CỐ ĐỊNH, nó sẽ ghi đè việc so khớp THỨ chung chung
-                        if (dateMatch || serialMatch) {
+                        // So khớp trực tiếp Tên cột với Ngày được chọn (VD: "11" hoặc "011")
+                        if (kClean === tNum || kClean === tPadded || k === tNum) {
                             match = true;
-                        } else if (!isTargetWeekday && headerWeekdayIdx === -1) {
-                            // Fallback nếu headers quá đơn giản (chỉ "1", "2")
-                            match = (k === tNum || k === tPadded || k.startsWith(tNum + '/') || k.startsWith(tPadded + '/'));
+                        } 
+                        // So khớp nếu cột bắt đầu bằng ngày (VD: "11-thg4" hoặc "11_mon")
+                        else if (kClean.match(new RegExp(`^${tNum}[^0-9]`)) || kClean.match(new RegExp(`^${tPadded}[^0-9]`))) {
+                            match = true;
                         }
+                        // So khớp theo THỨ (nếu user gõ chữ Thứ vào ô chọn, dù hiện tại dropdown là số 1-31)
+                        else if (headerWeekdayIdx !== -1 && isTargetWeekday) {
+                            if (headerWeekdayIdx === currentTargetNum) {
+                                match = true;
+                            }
                         }
+                        // Khớp nếu tên cột chứa "ngày 11"
+                        else if (kClean.includes('ngày' + tNum) || kClean.includes('ngay' + tNum)) {
+                            match = true;
+                        }
+
 
                         let v = String(val).trim().toLowerCase().replace(/\s+/g, '');
                         let isDeliveryFound = false;
 
-                        if (v && v !== '0' && v !== 'false' && v !== 'off') { isDeliveryFound = true; }
+                        // Chỉ cần ô có ký tự (khác rỗng, 0, false, off) thì coi như CÓ LỊCH GIAO
+                        if (v && v !== '0' && v !== 'false' && v !== 'off') {
+                            isDeliveryFound = true;
+                        }
+
 
 
 
@@ -3719,5 +3691,3 @@ if (weeklySearchProduct) {
 if (btnExportWeekly) {
     btnExportWeekly.addEventListener('click', exportWeeklyReviewToExcel);
 }
-
-} catch (e) { alert('LỖI THẬT SỰ TRONG APP.JS: ' + e.message + ' ' + e.stack); }
