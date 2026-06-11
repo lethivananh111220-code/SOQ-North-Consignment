@@ -393,7 +393,8 @@ function extractJsonDataCleanly(worksheet) {
     
     // CUSTOM FIX: Lấy "Ngày giao hàng" từ dòng đầu tiên (dòng 1) cho file Lịch giao hàng
     if (rawArr[0] && rawArr[0].some(c => typeof c === 'string' && c.toLowerCase().includes('ngày giao hàng'))) {
-        for (let j = 0; j < headersRaw.length; j++) {
+        let maxLen = Math.max(headersRaw.length, rawArr[0].length);
+        for (let j = 0; j < maxLen; j++) {
             let topCell = rawArr[0][j];
             if (topCell && typeof topCell === 'string' && !topCell.toLowerCase().includes('ngày giao hàng')) {
                 headersRaw[j] = topCell;
@@ -404,6 +405,11 @@ function extractJsonDataCleanly(worksheet) {
 
     let headers = headersRaw.map((h, j) => {
         let prefix = headersPrefix[j] ? String(headersPrefix[j]).trim() + '_' : '';
+        // Bỏ qua prefix nếu bản thân ô tiêu đề đã là định dạng ngày tháng rõ ràng
+        let hStr = String(h);
+        if (hStr.match(/^\d{4}-\d{2}-\d{2}/) || hStr.match(/^\d{1,2}[/-]\d{1,2}/) || hStr.toLowerCase().match(/^\d{1,2}\s*[-_]?\s*thg/)) {
+            prefix = '';
+        }
         return normalizeKey(prefix + h);
     });
     
@@ -976,7 +982,9 @@ btnCalculate.addEventListener('click', () => {
                 finalWkday = dTarget.getDay();
             }
 
-            let orderTimestamp = dTarget.getTime(); dTarget.setDate(dTarget.getDate() + 1); targetTimestamp = dTarget.getTime();
+            // Theo yêu cầu mới: Ngày chọn trên giao diện CHÍNH LÀ Ngày Giao Hàng (Target Delivery)
+            targetTimestamp = dTarget.getTime();
+            let orderTimestamp = targetTimestamp - 86400000; // Đẩy ngày lên đơn về trước 1 ngày
 
             // LƯU LẠI NGÀY GIAO HÀNG ĐỂ LƯU TRỮ
             const year = dTarget.getFullYear();
@@ -1093,29 +1101,56 @@ btnCalculate.addEventListener('click', () => {
                         let match = false;
                         let headerTs = 0;
 
-                        let headerWeekdayIdx = getWeekdayIdx(k);
-
                         let kClean = k.toLowerCase();
-                        let tNum = targetDateStr; // e.g. "11"
-                        let tPadded = tNum.padStart(2, '0');
+                        
+                        // Cố gắng parse ngày từ tên cột đã được normalize (kClean bị loại bỏ ký tự đặc biệt)
+                        // Ví dụ: "20260608000000" (từ Date obj), "08062026" (từ text), "08thg6", "ngay11", "1104", "11"
+                        let matchYMD = kClean.match(/^(\d{4})(\d{2})(\d{2})(?:000000)?$/); // YYYYMMDD
+                        let matchDDMMYYYY = kClean.match(/^(\d{2})(\d{2})(\d{4})$/); // DDMMYYYY
 
-                        // So khớp trực tiếp Tên cột với Ngày được chọn (VD: "11" hoặc "011")
-                        if (kClean === tNum || kClean === tPadded || k === tNum) {
-                            match = true;
-                        } 
-                        // So khớp nếu cột bắt đầu bằng ngày (VD: "11-thg4" hoặc "11_mon")
-                        else if (kClean.match(new RegExp(`^${tNum}[^0-9]`)) || kClean.match(new RegExp(`^${tPadded}[^0-9]`))) {
-                            match = true;
-                        }
-                        // So khớp theo THỨ (nếu user gõ chữ Thứ vào ô chọn, dù hiện tại dropdown là số 1-31)
-                        else if (headerWeekdayIdx !== -1 && isTargetWeekday) {
-                            if (headerWeekdayIdx === currentTargetNum) {
-                                match = true;
+                        if (matchYMD) {
+                            headerTs = new Date(parseInt(matchYMD[1], 10), parseInt(matchYMD[2], 10) - 1, parseInt(matchYMD[3], 10)).getTime();
+                        } else if (matchDDMMYYYY) {
+                            headerTs = new Date(parseInt(matchDDMMYYYY[3], 10), parseInt(matchDDMMYYYY[2], 10) - 1, parseInt(matchDDMMYYYY[1], 10)).getTime();
+                        } else {
+                            let dayMatch = kClean.match(/^ng(?:a|à)y(\d{1,2})/) || kClean.match(/^(\d{1,2})thg/) || kClean.match(/^(\d{1,2})(?:mon|tue|wed|thu|fri|sat|sun|t2|t3|t4|t5|t6|t7|cn)/) || kClean.match(/^(\d{1,2})$/);
+                            
+                            // Xử lý riêng dạng ddmm (ví dụ 1104) nhưng cần đề phòng trùng lặp mã số khác
+                            if (!dayMatch && kClean.length === 4 && !isNaN(kClean)) {
+                                let dStr = kClean.substring(0, 2);
+                                let mStr = kClean.substring(2, 4);
+                                if (parseInt(dStr) <= 31 && parseInt(mStr) > 0 && parseInt(mStr) <= 12) {
+                                    dayMatch = [kClean, dStr];
+                                }
+                            }
+
+                            if (dayMatch) {
+                                let dayNum = parseInt(dayMatch[1], 10);
+                                if (!isNaN(dayNum) && dayNum > 0 && dayNum <= 31) {
+                                    let dHeader = new Date(targetTimestamp);
+                                    // Dự đoán tháng: nếu ngày nhỏ hơn ngày hiện tại nhiều -> có thể là tháng sau
+                                    if (dayNum < dHeader.getDate() - 15) {
+                                        dHeader.setMonth(dHeader.getMonth() + 1);
+                                    } else if (dayNum > dHeader.getDate() + 15) {
+                                        dHeader.setMonth(dHeader.getMonth() - 1);
+                                    }
+                                    dHeader.setDate(dayNum);
+                                    headerTs = dHeader.getTime();
+                                }
                             }
                         }
-                        // Khớp nếu tên cột chứa "ngày 11"
-                        else if (kClean.includes('ngày' + tNum) || kClean.includes('ngay' + tNum)) {
-                            match = true;
+
+                        let headerWeekdayIdx = getWeekdayIdx(k);
+
+                        let tNum = targetDateStr; // e.g. "11"
+                        // Chỉ sử dụng headerTs đã parse thành công để match chính xác ngày Target Delivery
+                        if (headerTs > 0) {
+                            let headerDateObj = new Date(headerTs);
+                            if (isTargetWeekday) {
+                                if (headerDateObj.getDay() === currentTargetNum) match = true;
+                            } else {
+                                if (headerDateObj.getDate() === currentTargetNum) match = true;
+                            }
                         }
 
 
@@ -1163,7 +1198,13 @@ btnCalculate.addEventListener('click', () => {
                     if (!hasDelivery) return;
 
                     // --- TÍNH TOÁN LEADTIME ĐỘNG TỪ MA TRẬN LỊCH GIAO HÀNG (Dạng Timestamp) ---
-                    let futureDates = possibleNextDeliveryTimestamps.filter(t => t > targetTimestamp + 3600000); // Cách ít nhất 1h
+                    let extendedDates = [];
+                    possibleNextDeliveryTimestamps.forEach(t => {
+                        extendedDates.push(t);
+                        extendedDates.push(t + 7 * 86400000); // Mô phỏng chu kỳ lặp lại tuần sau
+                        extendedDates.push(t + 14 * 86400000); // Tuần sau nữa
+                    });
+                    let futureDates = extendedDates.filter(t => t > targetTimestamp + 3600000); // Cách ít nhất 1h
                     if (futureDates.length > 0) {
                         let nextTS = Math.min(...futureDates);
                         dynamicLT = Math.round((nextTS - targetTimestamp) / 86400000);
