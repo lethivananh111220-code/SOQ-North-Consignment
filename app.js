@@ -2010,21 +2010,56 @@ btnCalculate.addEventListener('click', () => {
             let strPrevInput = formatDateStr(inputData.prevInputDate);
 
             // Tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu (Ví dụ: T là 12/06 nhưng Tồn kho chỉ cập nhật đến 11/06)
+            let actualInvTs = T;
             let strInvDate = strT;
             if (finalInv === 0 && invData.prevInvDate > 0) {
                 finalInv = prevInv;
                 strInvDate = strPrevInv;
+                actualInvTs = invData.prevInvDate;
+            } else if (finalInv === 0 && invData.prevInvDate === 0) {
+                actualInvTs = 0;
             }
 
+            let actualInputTs = T;
             let strInputDate = strT;
             if (finalInput === 0 && inputData.prevInputDate > 0) {
                 finalInput = prevInput;
                 strInputDate = strPrevInput;
+                actualInputTs = inputData.prevInputDate;
+            } else if (finalInput === 0 && inputData.prevInputDate === 0) {
+                actualInputTs = 0;
+            }
+
+            // KIỂM TRA LẠI SỐ TỒN VÀ NHẬP: 
+            // - Nếu Ngày Tồn > Ngày Nhập: Chỉ ghi nhận Tồn, bỏ qua Nhập
+            // - Nếu Ngày Tồn < Ngày Nhập: Chỉ ghi nhận Nhập, bỏ qua Tồn
+            // - Nếu Ngày Tồn == Ngày Nhập: Ghi nhận cả 2
+            if (actualInvTs > 0 && actualInputTs > 0) {
+                if (actualInvTs > actualInputTs) {
+                    finalInput = 0;
+                    strInputDate = `Bỏ qua (${strInputDate} < Tồn ${strInvDate})`;
+                } else if (actualInvTs < actualInputTs) {
+                    finalInv = 0;
+                    strInvDate = `Bỏ qua (${strInvDate} < Nhập ${strInputDate})`;
+                }
             }
 
             let expectedInvAtArrival = Math.max(0, finalInv + finalInput - demandLeadTime);
 
+            let invWarning = false;
+            // Cảnh báo nếu cùng ngày và Tồn gần bằng Nhập (Tồn >= 80% Nhập và Tồn <= 150% Nhập)
+            if (actualInvTs > 0 && actualInvTs === actualInputTs && finalInv > 0 && finalInput > 0) {
+                let ratio = finalInv / finalInput;
+                if (ratio >= 0.8 && ratio <= 1.5) {
+                    invWarning = true;
+                }
+            }
+
             let invTooltip = `Tồn kho ghi nhận lúc (${strInvDate}): [ ${finalInv.toFixed(2)} ]\n- Trừ nhu cầu bán chờ hàng (${leadTimeArrival.toFixed(1)} ngày): -${demandLeadTime.toFixed(2)}\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
+            if (invWarning) {
+                invTooltip += `\n\n⚠️ CẢNH BÁO: Tồn và Nhập ghi nhận cùng ngày và số lượng gần bằng nhau.\nCó thể nhân viên đã đếm tồn SAU khi nhập hàng lên kệ.\nHệ thống đang cộng gộp cả hai, rủi ro dư thừa hàng!`;
+            }
+
             let inputTooltip = `Nhập/Giao hàng ghi nhận lúc (${strInputDate}): [ ${finalInput.toFixed(2)} ]`;
             let disposalTooltip = `KHÔNG PHẠT HỦY (Ratio quá thấp hoặc không đủ gốc chia)`;
 
@@ -2066,8 +2101,14 @@ btnCalculate.addEventListener('click', () => {
                 }
             }
 
-            let soq = totalDemand - expectedInvAtArrival;
-            soq = Math.max(Math.ceil(soq), 0);
+            let soqRaw = totalDemand - expectedInvAtArrival;
+            let soq = Math.max(Math.ceil(soqRaw), 0);
+
+            let soqTooltip = `Công thức: Tổng Nhu Cầu (Demand) - Tổng Tồn dự kiến khi hàng đến\n`;
+            soqTooltip += `(Trong đó: Tổng Tồn dự kiến đã bao gồm Tồn kho (INV) + Nhập (Input) trừ đi lượng bán chờ hàng)\n`;
+            soqTooltip += `= ${totalDemand.toFixed(2)} - ${expectedInvAtArrival.toFixed(2)}\n`;
+            soqTooltip += `= ${soqRaw.toFixed(2)}\n`;
+            soqTooltip += `=> Làm tròn (Gợi ý đặt tối thiểu 0): ${soq} SP`;
 
             let itemKey = `${data.storeID}_${data.prodStd.toLowerCase()}`;
             let trendAction = trendReportMap.get(itemKey) || '';
@@ -2116,6 +2157,7 @@ btnCalculate.addEventListener('click', () => {
                 'soq': soq,
                 'xu_huong': trendAction,
                 'xu_huong_html': xuHuongHtml,
+                'inv_warning': invWarning,
                 // Tooltips
                 'tip_ads': (mTotal === 0 && wTotal > 0) 
                            ? `[MÃ MỚI TỪ FILE TUẦN] Sản lượng: ${wTotal.toFixed(1)} / ${Math.round(wDaysCount)} ngày (Vòng đời)\n=> Trung bình: ${forecastDay.toFixed(2)} SP/ngày` 
@@ -2128,7 +2170,8 @@ btnCalculate.addEventListener('click', () => {
                 'tip_demand': breakdownTip,
                 'tip_inventory': invTooltip,
                 'tip_input': inputTooltip,
-                'tip_penalty': disposalTooltip
+                'tip_penalty': disposalTooltip,
+                'tip_soq': soqTooltip
             });
         });
 
@@ -2965,10 +3008,10 @@ function renderSOQTable(data) {
             <td title="${item.tip_growth}"><b>${item.growthHtml}</b></td>
             <td><span title="${item.tip_leadtime}">${item.leadtime}</span></td>
             <td title="${item.tip_demand}">${item.demandRaw}</td>
-            <td class="warning" title="${item.tip_inventory}">${item.inventory}</td>
+            <td class="warning" title="${item.tip_inventory}" style="${item.inv_warning ? 'border: 2px solid #ff9800; background: rgba(255, 152, 0, 0.1);' : ''}">${item.inv_warning ? '<span style="color:#ff9800; margin-right:4px;">⚠️</span>' : ''}${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
-            <td class="highlight">${item.soq}</td>
+            <td class="highlight" title="${item.tip_soq}">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
             ${finalOrderTd}
             ${noteTd}
