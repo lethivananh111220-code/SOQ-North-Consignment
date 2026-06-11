@@ -407,7 +407,7 @@ function extractJsonDataCleanly(worksheet) {
         let prefix = headersPrefix[j] ? String(headersPrefix[j]).trim() + '_' : '';
         // Bỏ qua prefix nếu bản thân ô tiêu đề đã là định dạng ngày tháng rõ ràng
         let hStr = String(h);
-        if (hStr.match(/^\d{4}-\d{2}-\d{2}/) || hStr.match(/^\d{1,2}[/-]\d{1,2}/) || hStr.toLowerCase().match(/^\d{1,2}\s*[-_]?\s*thg/)) {
+        if (hStr.match(/^\d{4}-\d{2}-\d{2}/) || hStr.match(/^\d{1,2}[/-]\d{1,2}/) || hStr.toLowerCase().match(/^\d{1,2}\s*[-_]?\s*(?:thg|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/)) {
             prefix = '';
         }
         return normalizeKey(prefix + h);
@@ -1112,7 +1112,7 @@ btnCalculate.addEventListener('click', () => {
                         } else if (matchDDMMYYYY) {
                             headerTs = new Date(parseInt(matchDDMMYYYY[3], 10), parseInt(matchDDMMYYYY[2], 10) - 1, parseInt(matchDDMMYYYY[1], 10)).getTime();
                         } else {
-                            let dayMatch = kClean.match(/^ng(?:a|à)y(\d{1,2})/) || kClean.match(/^(\d{1,2})thg/) || kClean.match(/^(\d{1,2})(?:mon|tue|wed|thu|fri|sat|sun|t2|t3|t4|t5|t6|t7|cn)/) || kClean.match(/^(\d{1,2})$/);
+                            let dayMatch = kClean.match(/^ng(?:a|à)y(\d{1,2})/) || kClean.match(/^(\d{1,2})(?:thg|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/) || kClean.match(/^(\d{1,2})(?:mon|tue|wed|thu|fri|sat|sun|t2|t3|t4|t5|t6|t7|cn)/) || kClean.match(/^(\d{1,2})$/);
                             
                             // Xử lý riêng dạng ddmm (ví dụ 1104) nhưng cần đề phòng trùng lặp mã số khác
                             if (!dayMatch && kClean.length === 4 && !isNaN(kClean)) {
