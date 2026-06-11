@@ -1093,8 +1093,7 @@ btnCalculate.addEventListener('click', () => {
 
                     let possibleNextDeliveryTimestamps = [];
 
-                    // Khởi tạo biến kiểm tra Chức năng (Function) của Store
-                    let isMer = String(row['function'] || row['Function'] || row['chức năng'] || row['loại'] || '').trim().toLowerCase() === 'mer';
+                    // Đã bỏ dữ kiện khu vực và function theo yêu cầu mới
 
                     for (const [key, val] of Object.entries(row)) {
                         let k = String(key).trim();
@@ -1154,11 +1153,15 @@ btnCalculate.addEventListener('click', () => {
                         }
 
 
-                        let v = String(val).trim().toLowerCase().replace(/\s+/g, '');
+                        let cellValue = String(val).trim().toLowerCase();
+                        let storeNameStr = String(row['tencuahang'] || row['têncửahàng'] || row['storename'] || row['tên'] || '').trim().toLowerCase();
+                        let sapStr = String(storeID).trim().toLowerCase();
                         let isDeliveryFound = false;
 
-                        // Chỉ cần ô có ký tự (khác rỗng, 0, false, off) thì coi như CÓ LỊCH GIAO
-                        if (v && v !== '0' && v !== 'false' && v !== 'off') {
+                        // Theo yêu cầu mới: Tên cửa hàng nếu xuất hiện vào ngày giao hàng tức có giao hàng
+                        if (cellValue && storeNameStr && cellValue.includes(storeNameStr)) {
+                            isDeliveryFound = true;
+                        } else if (cellValue && sapStr && cellValue.includes(sapStr)) {
                             isDeliveryFound = true;
                         }
 
