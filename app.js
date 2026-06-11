@@ -1378,7 +1378,7 @@ btnCalculate.addEventListener('click', () => {
         for (let storeID of new Set([...storeMaxInvDateMap.keys(), ...storeMaxOrderDateMap.keys()])) {
             let sInvDate = storeMaxInvDateMap.get(storeID) || 0;
             let sOrderDate = storeMaxOrderDateMap.get(storeID) || 0;
-            let sDeliveryDate = sOrderDate > 0 ? sOrderDate + 86400000 : 0;
+            let sDeliveryDate = sOrderDate > 0 ? sOrderDate + 86400000 : 0; // Khôi phục: Cộng thêm 1 ngày để thành ngày giao hàng
 
             let T = 0;
             if (sInvDate > 0 && sDeliveryDate > 0) {
@@ -1493,7 +1493,7 @@ btnCalculate.addEventListener('click', () => {
                 // Trích xuất ngày giao hàng/nhập hàng
                 let rawDate = row['orderdate'] || row['Order date'] || row['completeddate'] || row['Completed date'] || row['date'] || row['ngaydathang'] || row['ngay'] || row['ngaytao'] || row['createddate'] || 0;
                 let cOrderDate = parseDateStrToTime(rawDate);
-                let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Cộng thêm 1 ngày giao
+                let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Khôi phục: Cộng thêm 1 ngày để thành ngày giao hàng
 
                 let T = storeMasterDateMap.get(storeID);
                 if (!T || cDeliveryDate > T) return;
