@@ -1410,7 +1410,7 @@ btnCalculate.addEventListener('click', () => {
                 let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
                 let cDate = parseDateStrToTime(rawDate);
 
-                let T = storeMasterDateMap.get(storeID);
+                let T = storeMaxInvDateMap.get(storeID); // Chỉ so khớp với ngày lớn nhất của Tồn kho
                 if (!T || cDate > T) return;
 
                 let prodStd = normalizeProductName(prod);
@@ -1495,7 +1495,8 @@ btnCalculate.addEventListener('click', () => {
                 let cOrderDate = parseDateStrToTime(rawDate);
                 let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Khôi phục: Cộng thêm 1 ngày để thành ngày giao hàng
 
-                let T = storeMasterDateMap.get(storeID);
+                let sOrderDate = storeMaxOrderDateMap.get(storeID) || 0;
+                let T = sOrderDate > 0 ? sOrderDate + 86400000 : 0; // Ngày lớn nhất của Input
                 if (!T || cDeliveryDate > T) return;
 
                 if (!inputMap.has(key)) {
@@ -2009,24 +2010,16 @@ btnCalculate.addEventListener('click', () => {
             let strPrevInv = formatDateStr(invData.prevInvDate);
             let strPrevInput = formatDateStr(inputData.prevInputDate);
 
-            // Tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu (Ví dụ: T là 12/06 nhưng Tồn kho chỉ cập nhật đến 11/06)
+            // Yêu cầu: Không tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu
             let actualInvTs = T;
             let strInvDate = strT;
-            if (finalInv === 0 && invData.prevInvDate > 0) {
-                finalInv = prevInv;
-                strInvDate = strPrevInv;
-                actualInvTs = invData.prevInvDate;
-            } else if (finalInv === 0 && invData.prevInvDate === 0) {
+            if (finalInv === 0 && invData.currentInv === 0 && invData.prevInvDate === 0) {
                 actualInvTs = 0;
             }
 
             let actualInputTs = T;
             let strInputDate = strT;
-            if (finalInput === 0 && inputData.prevInputDate > 0) {
-                finalInput = prevInput;
-                strInputDate = strPrevInput;
-                actualInputTs = inputData.prevInputDate;
-            } else if (finalInput === 0 && inputData.prevInputDate === 0) {
+            if (finalInput === 0 && inputData.currentInput === 0 && inputData.prevInputDate === 0) {
                 actualInputTs = 0;
             }
 
