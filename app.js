@@ -1359,7 +1359,9 @@ btnCalculate.addEventListener('click', () => {
                 }
                 let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
                 let cDate = parseDateStrToTime(rawDate);
-                if (cDate > 0) {
+                // Bỏ qua các ngày typo trong tương lai (ví dụ ghi nhầm 07/11 thay vì 11/06)
+                let maxAllowedTs = Date.now() + 86400000 * 2; 
+                if (cDate > 0 && cDate <= maxAllowedTs) {
                     let currentMax = storeMaxInvDateMap.get(storeID) || 0;
                     if (cDate > currentMax) storeMaxInvDateMap.set(storeID, cDate);
                 }
