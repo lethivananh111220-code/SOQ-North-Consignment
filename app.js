@@ -1423,6 +1423,7 @@ btnCalculate.addEventListener('click', () => {
                 // ... (Quy đổi kg)
                 let inv = Number(String(row['tonkho'] || row['stock'] || row['ton'] || row['inventory'] || row['inventoryquantity'] || row['inventoryamount'] || row['stkinv'] || '0').replace(/,/g, ''));
                 let disp = Number(String(row['huy'] || row['disposal'] || row['scrap'] || row['tonhuy'] || row['disposalquantity'] || row['disposalamount'] || '0').replace(/,/g, ''));
+                let importAmt = Number(String(row['importamount'] || row['import amount'] || row['slnhap'] || row['nhap'] || row['soluongnhap'] || '0').replace(/,/g, ''));
 
                 if (prod && String(prod).toLowerCase().includes('retail kg')) {
                     inv = inv / 1000;
@@ -1431,8 +1432,8 @@ btnCalculate.addEventListener('click', () => {
 
                 if (!inventoryMap.has(key)) {
                     inventoryMap.set(key, {
-                        currentInv: 0, currentDisp: 0,
-                        prevInv: 0, prevInvDate: 0,
+                        currentInv: 0, currentDisp: 0, currentImport: 0,
+                        prevInv: 0, prevInvDate: 0, prevImport: 0,
                         prodOrig: prodStd
                     });
                 }
@@ -1441,13 +1442,16 @@ btnCalculate.addEventListener('click', () => {
                 if (cDate === T) {
                     data.currentInv += inv;
                     data.currentDisp += disp;
+                    data.currentImport += importAmt;
                 } else if (cDate < T) {
                     // Lưu dữ liệu của ngày gần T nhất
                     if (cDate > data.prevInvDate) {
                         data.prevInvDate = cDate;
                         data.prevInv = inv;
+                        data.prevImport = importAmt;
                     } else if (cDate === data.prevInvDate) {
                         data.prevInv += inv;
+                        data.prevImport += importAmt;
                     }
                 }
             });
@@ -1995,10 +1999,11 @@ btnCalculate.addEventListener('click', () => {
             let penaltyApplied = 0;
             let finalInv = invData.currentInv || 0;
             let finalDisp = invData.currentDisp || 0;
-            let finalInput = inputData.currentInput || 0;
+            let finalInput = invData.currentImport || 0;
+            let finalOdaInput = inputData.currentInput || 0;
 
             let prevInv = invData.prevInv || 0;
-            let prevInput = inputData.prevInput || 0;
+            let prevInput = invData.prevImport || 0;
 
             let formatDateStr = (ts) => {
                 if (!ts) return 'N/A';
@@ -2008,7 +2013,7 @@ btnCalculate.addEventListener('click', () => {
 
             let strT = formatDateStr(T);
             let strPrevInv = formatDateStr(invData.prevInvDate);
-            let strPrevInput = formatDateStr(inputData.prevInputDate);
+            let strPrevInput = formatDateStr(invData.prevInvDate);
 
             // Yêu cầu: Không tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu
             let actualInvTs = T;
@@ -2017,9 +2022,9 @@ btnCalculate.addEventListener('click', () => {
                 actualInvTs = 0;
             }
 
-            let actualInputTs = T;
-            let strInputDate = strT;
-            if (finalInput === 0 && inputData.currentInput === 0 && inputData.prevInputDate === 0) {
+            let actualInputTs = actualInvTs;
+            let strInputDate = strInvDate;
+            if (finalInput === 0 && invData.currentImport === 0 && invData.prevInvDate === 0) {
                 actualInputTs = 0;
             }
 
@@ -2053,7 +2058,10 @@ btnCalculate.addEventListener('click', () => {
                 invTooltip += `\n\n⚠️ CẢNH BÁO: Tồn và Nhập ghi nhận cùng ngày và số lượng gần bằng nhau.\nCó thể nhân viên đã đếm tồn SAU khi nhập hàng lên kệ.\nHệ thống đang cộng gộp cả hai, rủi ro dư thừa hàng!`;
             }
 
-            let inputTooltip = `Nhập/Giao hàng ghi nhận lúc (${strInputDate}): [ ${finalInput.toFixed(2)} ]`;
+            let inputTooltip = `Nhập hàng (từ Merchandiser) ghi nhận lúc (${strInputDate}): [ ${finalInput.toFixed(2)} ]`;
+            let odaOrderTs = storeMaxOrderDateMap.get(data.storeID) || 0;
+            let strOdaDate = odaOrderTs > 0 ? formatDateStr(odaOrderTs + 86400000) : 'N/A';
+            let odaInputTooltip = `Ngày nhập hàng: ${strOdaDate}\nNhập ODA (từ Sell-Report): [ ${finalOdaInput.toFixed(2)} ]`;
             let disposalTooltip = `KHÔNG PHẠT HỦY (Ratio quá thấp hoặc không đủ gốc chia)`;
 
             let baseForDisposal = prevInv + prevInput;
@@ -2146,6 +2154,7 @@ btnCalculate.addEventListener('click', () => {
                 'demandRaw': totalDemandRaw.toFixed(2),
                 'inventory': Number(finalInv.toFixed(2)),
                 'input': Number(finalInput.toFixed(2)),
+                'oda_input': Number(finalOdaInput.toFixed(2)),
                 'penalty': penaltyApplied > 0 ? `-${penaltyApplied.toFixed(2)}` : '0',
                 'soq': soq,
                 'xu_huong': trendAction,
@@ -2163,6 +2172,7 @@ btnCalculate.addEventListener('click', () => {
                 'tip_demand': breakdownTip,
                 'tip_inventory': invTooltip,
                 'tip_input': inputTooltip,
+                'tip_oda_input': odaInputTooltip,
                 'tip_penalty': disposalTooltip,
                 'tip_soq': soqTooltip
             });
@@ -2450,7 +2460,7 @@ btnExport.addEventListener('click', () => {
         "Mã SAP (Store)", "Tên Cửa Hàng", "Khu Vực", "Tên Sản Phẩm", 
         "Trung Bình Bán/Ngày", "Xu Hướng (%)", "ADS T2-T6", "ADS T7-CN", 
         "XU HƯỚNG GIAO (%)", "Leadtime", "Total Demand", "Tồn (Inv)", 
-        "Nhập (Input)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
+        "Nhập (INPUT)", "Nhập (ODA)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
     ];
     rawAoa.push(rawHeaders);
     
@@ -2475,6 +2485,7 @@ btnExport.addEventListener('click', () => {
             item.demandRaw,
             item.inventory,
             item.input,
+            item.oda_input,
             item.penalty,
             item.soq,
             item.xu_huong || '',
@@ -2768,6 +2779,7 @@ if (navHistory && navDashboard) {
             item.leadtime = item.leadtime || '';
             item.inventory = item.inventory || 0;
             item.input = item.input || 0;
+            item.oda_input = item.oda_input || 0;
             item.penalty = item.penalty || '0';
             item.soq = item.soq || 0;
             item.xu_huong = item.xu_huong || '';
@@ -3003,6 +3015,7 @@ function renderSOQTable(data) {
             <td title="${item.tip_demand}">${item.demandRaw}</td>
             <td class="warning" title="${item.tip_inventory}" style="${item.inv_warning ? 'border: 2px solid #ff9800; background: rgba(255, 152, 0, 0.1);' : ''}">${item.inv_warning ? '<span style="color:#ff9800; margin-right:4px;">⚠️</span>' : ''}${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
+            <td class="highlight" title="${item.tip_oda_input}">${item.oda_input}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
             <td class="highlight" title="${item.tip_soq}">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
