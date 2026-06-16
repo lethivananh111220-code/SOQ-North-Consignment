@@ -441,19 +441,26 @@ function extractJsonDataCleanly(worksheet) {
         let obj = {};
         let hasData = false;
         for (let j = 0; j < headers.length; j++) {
-            if (row[j] !== undefined && row[j] !== null && String(row[j]).trim() !== '') {
-                obj[headers[j]] = row[j]; // Composite
+            let h = headers[j];
+            let rawClean = normalizeKey(headersRaw[j]);
+            const wDays = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
-                // Khôi phục việc đọc các cột đơn giản (sap, date...) để không bị hư tên do prefix chặn.
-                // Ngăn chặn riêng biệt lỗi trượt/chồng lắp lịch các ngày trong tuần (đã xử lý ở bước trước).
-                let rawClean = normalizeKey(headersRaw[j]);
-                const wDays = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+            if (row[j] !== undefined && row[j] !== null && String(row[j]).trim() !== '') {
+                if (obj[h] === undefined) obj[h] = row[j]; // Composite
+
                 if (!wDays.some(d => rawClean.includes(d))) {
-                    obj[rawClean] = row[j];
-                    obj[headersRaw[j]] = row[j];
+                    if (obj[rawClean] === undefined) obj[rawClean] = row[j];
+                    if (obj[headersRaw[j]] === undefined) obj[headersRaw[j]] = row[j];
                 }
                 
                 hasData = true;
+            } else {
+                // Đánh dấu đã quét qua cột này để tránh cột trùng lặp phía sau ghi đè
+                if (obj[h] === undefined) obj[h] = "";
+                if (!wDays.some(d => rawClean.includes(d))) {
+                    if (obj[rawClean] === undefined) obj[rawClean] = "";
+                    if (obj[headersRaw[j]] === undefined) obj[headersRaw[j]] = "";
+                }
             }
         }
         if (hasData) json.push(obj);
