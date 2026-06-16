@@ -2012,12 +2012,16 @@ btnCalculate.addEventListener('click', () => {
             };
 
             let strT = formatDateStr(T);
+            let maxInvDate = storeMaxInvDateMap.get(data.storeID) || 0;
+            let strMaxInvDate = formatDateStr(maxInvDate);
+
             let strPrevInv = formatDateStr(invData.prevInvDate);
             let strPrevInput = formatDateStr(invData.prevInvDate);
 
             // Yêu cầu: Không tự động lùi về dữ liệu gần nhất nếu ngày T không có dữ liệu
-            let actualInvTs = T;
-            let strInvDate = strT;
+            // Lấy đúng ngày tại cột date ở file merchandise (INV / INPUT từ Merchandiser)
+            let actualInvTs = maxInvDate > 0 ? maxInvDate : T;
+            let strInvDate = maxInvDate > 0 ? strMaxInvDate : strT;
             if (finalInv === 0 && invData.currentInv === 0 && invData.prevInvDate === 0) {
                 actualInvTs = 0;
             }
