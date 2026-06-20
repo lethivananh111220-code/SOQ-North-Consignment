@@ -893,24 +893,6 @@ function archiveTodayData() {
         dateStr: dateStr
     };
     saveToDB('soq_archive_' + dateStr, archivePayload);
-
-    if (typeof firebase !== 'undefined') {
-        let userName = inputUserName ? inputUserName.value.trim() : "Hệ thống";
-        if (!userName) userName = "Ẩn danh";
-        
-        const cloudPayload = {
-            filename: scheduleFileName,
-            results: finalResults,
-            timestamp: Date.now(),
-            dateStr: dateStr,
-                      deliveryDateStr: currentDeliveryDateStr,
-            userName: userName
-        };
-        
-        firebase.database().ref('archive_soq/' + dateStr).set(cloudPayload)
-            .then(() => console.log(`Đã lưu trữ dữ liệu ngày ${dateStr} lên Cloud.`))
-            .catch(err => console.error("Lỗi lưu trữ Cloud:", err));
-    }
 }
 
 function extractSAP(str) {
@@ -2253,6 +2235,9 @@ btnCalculate.addEventListener('click', () => {
                  firebase.database().ref('latest_soq').set(payload)
                      .then(() => console.log("Đã cập nhật SOQ mới nhất lên Cloud."))
                      .catch(err => console.error("Lỗi lưu Cloud:", err));
+
+                 firebase.database().ref('archive_soq/' + dateStr).set(payload)
+                     .catch(err => console.error("Lỗi lưu trữ Cloud:", err));
              }
         }
     } catch (err) {
@@ -2265,7 +2250,7 @@ btnCalculate.addEventListener('click', () => {
 
 btnSaveChanges.addEventListener('click', saveChangesToCloud);
 
-// Hàm hỗ trợ lưu thay đổi lên Cloud (Firebase Transaction)
+// Hàm hỗ trợ lưu thay đổi lên Cloud (Firebase Update nhanh gọn)
 function saveChangesToCloud() {
     return new Promise((resolve, reject) => {
         if (typeof firebase === 'undefined') {
@@ -2279,124 +2264,65 @@ function saveChangesToCloud() {
         let userName = inputUserName ? inputUserName.value.trim() : "Hệ thống";
         if (!userName) userName = "Ẩn danh";
         const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
+        const dateStr = currentDeliveryDateStr || now.toISOString().split('T')[0];
 
-        const payload = {
-            results: finalResults,
-            filename: scheduleFileName,
-            timestamp: now.getTime(),
-            dateStr: dateStr,
-            deliveryDateStr: currentDeliveryDateStr,
-            userName: userName
-        };
+        let updates = {};
+        let archiveUpdates = {};
+        let modified = false;
 
-        if (typeof firebase !== 'undefined') {
-        firebase.database().ref('latest_soq').transaction((currentData) => {
-            try {
-                // Kiểm tra cùng ngày (dateStr) để gộp thay đổi của mọi người dùng
-                if (currentData && currentData.dateStr === dateStr) {
-                    let cloudMap = {};
-                    if (currentData.results) {
-                        let resultsArr = Array.isArray(currentData.results) ? currentData.results : Object.values(currentData.results);
-                        resultsArr.forEach(r => {
-                            if (r) cloudMap[r.sap + '_' + r.product] = r;
-                        });
-                    }
+        finalResults.forEach((item, index) => {
+            if (item.is_dirty) {
+                modified = true;
+                // Update latest_soq
+                updates[`results/${index}/final_order`] = item.final_order;
+                updates[`results/${index}/note`] = item.note;
+                
+                // Update archive_soq
+                archiveUpdates[`results/${index}/final_order`] = item.final_order;
+                archiveUpdates[`results/${index}/note`] = item.note;
+            }
+        });
 
-                    let modified = false;
-                    finalResults.forEach(localItem => {
-                        if (localItem.is_dirty) {
-                            modified = true;
-                            let key = localItem.sap + '_' + localItem.product;
-                            if (cloudMap[key]) {
-                                cloudMap[key].final_order = localItem.final_order;
-                                cloudMap[key].note = localItem.note;
-                            } else {
-                                if (!currentData.results) currentData.results = [];
-                                
-                                let cleanItem = JSON.parse(JSON.stringify(localItem));
-                                delete cleanItem.is_dirty;
-
-                                if (Array.isArray(currentData.results)) {
-                                    currentData.results.push(cleanItem);
-                                } else {
-                                    let maxKey = Math.max(-1, ...Object.keys(currentData.results).map(Number).filter(n => !isNaN(n)));
-                                    currentData.results[maxKey + 1] = cleanItem;
-                                }
-                            }
-                        }
-                    });
-
-                    if (!modified) {
-                        currentData.lastActive = now.getTime();
-                    }
-
-                    // Đồng bộ metadata mới nhất
-                    currentData.filename = scheduleFileName;
-                    currentData.timestamp = now.getTime();
-                    currentData.userName = userName;
-
-                    // Sanitize before returning to prevent Firebase SDK crash due to undefined properties
-                    return JSON.parse(JSON.stringify(currentData));
-                }
-
-                    
-                    let newPayload = JSON.parse(JSON.stringify(payload));
-                    if (Array.isArray(newPayload.results)) {
-                        newPayload.results.forEach(r => { if(r) delete r.is_dirty; });
-                    }
-                    return newPayload;
-                } catch (e) {
-                    console.error("Lỗi bên trong transaction: ", e);
-                    return; // Hủy transaction
-                }
-            }).then((result) => {
-                if (result.committed) {
-                    let snapshotVal = result.snapshot.val();
-                    if (snapshotVal && snapshotVal.results) {
-                        let cloudRes = snapshotVal.results;
-                        if (Array.isArray(cloudRes)) {
-                            finalResults = cloudRes;
-                        } else {
-                            finalResults = Object.values(cloudRes);
-                        }
-                    }
-                    if (Array.isArray(finalResults)) {
-                        finalResults.forEach(r => { if(r) delete r.is_dirty; });
-                    }
-                    
-                    btnSaveChanges.disabled = false;
-                    btnSaveChanges.innerHTML = "✔️ Đã lưu";
-                    setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
-                    saveToDB('soq_latest_array', finalResults);
-                    
-                    setTimeout(() => {
-                        archiveTodayData();
-                        renderSOQTable(finalResults);
-                        populateRegionDropdown();
-                    }, 50);
-                    
-                    resolve();
-                } else {
-                    if (Array.isArray(finalResults)) {
-                        finalResults.forEach(r => { if(r) delete r.is_dirty; });
-                    }
-                    btnSaveChanges.disabled = false;
-                    btnSaveChanges.innerHTML = "✔️ Đã lưu (Không đổi)";
-                    setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
-                    resolve();
-                }
-            }).catch(err => {
-                console.error("Lỗi lưu Cloud:", err);
-                alert("Lỗi khi lưu lên Cloud: " + err.message);
-                btnSaveChanges.disabled = false;
-                btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
-                reject(err);
-            });
-        } else {
-            alert("Lỗi: Firebase chưa được khởi tạo.");
-            reject(new Error("Firebase chưa được khởi tạo."));
+        if (!modified) {
+            btnSaveChanges.disabled = false;
+            btnSaveChanges.innerHTML = "✔️ Đã lưu (Không đổi)";
+            setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
+            resolve();
+            return;
         }
+
+        updates['timestamp'] = now.getTime();
+        updates['userName'] = userName;
+        updates['dateStr'] = dateStr;
+        updates['deliveryDateStr'] = currentDeliveryDateStr;
+        
+        archiveUpdates['timestamp'] = now.getTime();
+        archiveUpdates['userName'] = userName;
+        archiveUpdates['dateStr'] = dateStr;
+        archiveUpdates['deliveryDateStr'] = currentDeliveryDateStr;
+
+        let p1 = firebase.database().ref('latest_soq').update(updates);
+        let p2 = firebase.database().ref('archive_soq/' + dateStr).update(archiveUpdates);
+
+        Promise.all([p1, p2]).then(() => {
+            // Xoá cờ is_dirty
+            if (Array.isArray(finalResults)) {
+                finalResults.forEach(r => { if(r) delete r.is_dirty; });
+            }
+            
+            btnSaveChanges.disabled = false;
+            btnSaveChanges.innerHTML = "✔️ Đã lưu";
+            setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
+            
+            saveToDB('soq_latest_array', finalResults);
+            resolve();
+        }).catch(err => {
+            console.error("Lỗi lưu Cloud:", err);
+            alert("Lỗi khi lưu lên Cloud: " + err.message);
+            btnSaveChanges.disabled = false;
+            btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
+            reject(err);
+        });
     });
 }
 
