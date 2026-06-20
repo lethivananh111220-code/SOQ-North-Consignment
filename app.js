@@ -2369,10 +2369,13 @@ function saveChangesToCloud() {
                     btnSaveChanges.innerHTML = "✔️ Đã lưu";
                     setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
                     saveToDB('soq_latest_array', finalResults);
-              archiveTodayData();
                     
-                    renderSOQTable(finalResults);
-                    populateRegionDropdown();
+                    setTimeout(() => {
+                        archiveTodayData();
+                        renderSOQTable(finalResults);
+                        populateRegionDropdown();
+                    }, 50);
+                    
                     resolve();
                 } else {
                     if (Array.isArray(finalResults)) {
