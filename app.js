@@ -353,6 +353,7 @@ function getOverlapDays(mondayStr, startRangeStr, endRangeStr) {
 // Elements
 const btnCalculate = document.getElementById('btn-calculate');
 const btnExport = document.getElementById('btn-export');
+const btnSaveChanges = document.getElementById('btn-save-changes');
 const resultsSection = document.getElementById('results-section');
 const tbody = document.getElementById('soq-tbody');
 const inputUserName = document.getElementById('user-name');
@@ -1292,22 +1293,31 @@ btnCalculate.addEventListener('click', () => {
         const resolveStoreID = (rawSap, nick) => {
             let finalID = "";
             let extracted = extractSAP(rawSap);
-            if (extracted && !isNaN(parseInt(extracted))) {
-                finalID = extracted;
-            } else {
-                let nKey = normalizeKey(nick);
+            let nKey = normalizeKey(nick);
+            
+            let lookupName = () => {
                 let lookedUp = reverseStoreNamesMap.get(nKey);
                 if (!lookedUp) {
                     for (let [alias, id] of reverseStoreNamesMap.entries()) {
                         if (alias && nKey && (alias.includes(nKey) || nKey.includes(alias))) {
                             if (alias.length > 5 || nKey.length > 5) { // Tránh nhầm lẫn chữ tắt quá ngắn
-                                lookedUp = id;
-                                break;
+                                return id;
                             }
                         }
                     }
                 }
-                finalID = lookedUp ? lookedUp : extractSAP(nick);
+                return lookedUp;
+            };
+
+            if (extracted && !isNaN(parseInt(extracted))) {
+                finalID = extracted;
+                if (!reverseStoreNamesMap.has(finalID) && nKey) {
+                    let lookedUpName = lookupName();
+                    if (lookedUpName) finalID = lookedUpName;
+                }
+            } else {
+                let lookedUpName = lookupName();
+                finalID = lookedUpName ? lookedUpName : extractSAP(nick);
             }
             return finalID;
         }
@@ -1352,11 +1362,8 @@ btnCalculate.addEventListener('click', () => {
             datasets.inventory.forEach(row => {
                 let store = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'] || row['article'];
                 if (!store) return;
-                let storeID = extractSAP(store);
-                if (storeID && isNaN(parseInt(storeID))) {
-                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(store));
-                    if (lookedUp) storeID = lookedUp;
-                }
+                let sName = row['tencuahang'] || row['têncửahàng'] || row['storename'] || row['store'] || row['nickname'] || '';
+                let storeID = resolveStoreID(store, sName);
                 let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
                 let cDate = parseDateStrToTime(rawDate);
                 // Bỏ qua các ngày typo trong tương lai (ví dụ ghi nhầm 07/11 thay vì 11/06)
@@ -1408,12 +1415,8 @@ btnCalculate.addEventListener('click', () => {
                 let prod = row['productname'] || row['listsnphm'] || row['tnsnphm'] || row['tensanphamwm'] || row['articlename'] || row['article'] || row['tensanpham'] || row['productname'];
                 if (!store || !prod) return;
 
-                let storeID = extractSAP(store);
-                if (storeID && isNaN(parseInt(storeID))) {
-                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(store));
-                    if (lookedUp) storeID = lookedUp;
-                }
-                let sName = row['tencuahang'] || row['tncahng'] || row['storename'] || row['store'];
+                let sName = row['tencuahang'] || row['têncửahàng'] || row['storename'] || row['store'] || row['nickname'] || '';
+                let storeID = resolveStoreID(store, sName);
                 if (sName && !storeNamesMap.has(storeID)) storeNamesMap.set(storeID, String(sName).trim());
 
                 let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
@@ -1558,13 +1561,8 @@ btnCalculate.addEventListener('click', () => {
                 let qty = Number(String(row['posquantity'] || row['quantity'] || row['soluong'] || row['sum'] || '0').replace(/,/g, ''));
                 if (pr && String(pr).toLowerCase().includes('retail kg')) qty /= 1000;
 
-                let storeID = extractSAP(st);
-                
-                // Hỗ trợ Fallback Lookup cho Monthly Sales y chang Weekly
-                if (storeID && isNaN(parseInt(storeID))) {
-                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(st));
-                    if (lookedUp) storeID = lookedUp;
-                }
+                let nick = row['tencuahang'] || row['têncửahàng'] || row['storename'] || row['store'] || row['nickname'] || '';
+                let storeID = resolveStoreID(st, nick);
 
                 let rawDate = String(row['calendarday'] || row['date'] || row['ngay'] || '').trim();
 
@@ -1661,13 +1659,8 @@ btnCalculate.addEventListener('click', () => {
 
                 if (st) {
                     // --- DẠNG FILE PHẲNG (TRANSACTION) ---
-                    let storeID = extractSAP(st);
-                    
-                    // Fallback cực mạnh cho ODA: Nếu ô Name/Nickname không chứa Mã SAP dạng số, ta sẽ lookup từ thư viện!
-                    if (storeID && isNaN(parseInt(storeID))) {
-                        let lookedUp = reverseStoreNamesMap.get(normalizeKey(st));
-                        if (lookedUp) storeID = lookedUp;
-                    }
+                    let nick = row['tencuahang'] || row['têncửahàng'] || row['storename'] || row['store'] || row['nickname'] || '';
+                    let storeID = resolveStoreID(st, nick);
 
                     let qty = Number(String(row['posquantity'] || row['sum'] || '0').replace(/,/g, ''));
                     if (pr && String(pr).toLowerCase().includes('retail kg')) qty /= 1000;
@@ -2270,6 +2263,8 @@ btnCalculate.addEventListener('click', () => {
     }
 });
 
+btnSaveChanges.addEventListener('click', saveChangesToCloud);
+
 // Hàm hỗ trợ lưu thay đổi lên Cloud (Firebase Transaction)
 function saveChangesToCloud() {
     return new Promise((resolve, reject) => {
@@ -2277,6 +2272,9 @@ function saveChangesToCloud() {
             reject(new Error("Firebase chưa được khởi tạo."));
             return;
         }
+
+        btnSaveChanges.disabled = true;
+        btnSaveChanges.innerHTML = "⏳ Đang lưu...";
 
         let userName = inputUserName ? inputUserName.value.trim() : "Hệ thống";
         if (!userName) userName = "Ẩn danh";
@@ -2367,6 +2365,7 @@ function saveChangesToCloud() {
                         finalResults.forEach(r => { if(r) delete r.is_dirty; });
                     }
                     
+                    btnSaveChanges.disabled = false;
                     btnSaveChanges.innerHTML = "✔️ Đã lưu";
                     setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
                     saveToDB('soq_latest_array', finalResults);
@@ -2374,20 +2373,26 @@ function saveChangesToCloud() {
                     
                     renderSOQTable(finalResults);
                     populateRegionDropdown();
+                    resolve();
                 } else {
                     if (Array.isArray(finalResults)) {
                         finalResults.forEach(r => { if(r) delete r.is_dirty; });
                     }
+                    btnSaveChanges.disabled = false;
                     btnSaveChanges.innerHTML = "✔️ Đã lưu (Không đổi)";
                     setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
+                    resolve();
                 }
             }).catch(err => {
                 console.error("Lỗi lưu Cloud:", err);
                 alert("Lỗi khi lưu lên Cloud: " + err.message);
+                btnSaveChanges.disabled = false;
                 btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
+                reject(err);
             });
         } else {
             alert("Lỗi: Firebase chưa được khởi tạo.");
+            reject(new Error("Firebase chưa được khởi tạo."));
         }
     });
 }
