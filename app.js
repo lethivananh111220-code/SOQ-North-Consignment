@@ -2049,13 +2049,7 @@ btnCalculate.addEventListener('click', () => {
             let expectedInvAtArrival = Math.max(0, finalInv + finalInput - demandLeadTime);
 
             let invWarning = false;
-            // Cảnh báo nếu cùng ngày và Tồn gần bằng Nhập (Tồn >= 80% Nhập và Tồn <= 150% Nhập)
-            if (actualInvTs > 0 && actualInvTs === actualInputTs && finalInv > 0 && finalInput > 0) {
-                let ratio = finalInv / finalInput;
-                if (ratio >= 0.8 && ratio <= 1.5) {
-                    invWarning = true;
-                }
-            }
+            // Đã loại bỏ logic cảnh báo Tồn và Nhập theo yêu cầu
 
             let invTooltip = `Tồn kho ghi nhận lúc (${strInvDate}): [ ${finalInv.toFixed(2)} ]\n- Trừ nhu cầu bán chờ hàng (${leadTimeArrival.toFixed(1)} ngày): -${demandLeadTime.toFixed(2)}\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
             if (invWarning) {
@@ -2142,6 +2136,7 @@ btnCalculate.addEventListener('click', () => {
             let breakdownTip = `Công thức: Demand (Nhu cầu gốc) + SafetyStock. \n- Nhu cầu gốc (Coverage): ${coverageDemandBase.toFixed(2)}\n- SafetyStock: +${safetyStock.toFixed(2)} \n- Penalty (Giảm trừ): -${penaltyApplied.toFixed(2)}`;
 
             finalResults.push({
+                'original_index': finalResults.length,
                 'sap': data.storeID,
                 'store': storeNameStr,
                 'region': storeRegionMap.get(data.storeID) || 'Khác',
@@ -2289,13 +2284,18 @@ function saveChangesToCloud() {
         finalResults.forEach((item, index) => {
             if (item.is_dirty) {
                 modified = true;
-                // Update latest_soq
-                updates[`results/${index}/final_order`] = item.final_order;
-                updates[`results/${index}/note`] = item.note;
+                // Sử dụng original_index để lưu đúng thứ tự mảng gốc, tránh mất data do người dùng Sort/Filter table làm lệch index
+                let idx = item.original_index !== undefined ? item.original_index : index;
                 
-                // Update archive_soq
-                archiveUpdates[`results/${index}/final_order`] = item.final_order;
-                archiveUpdates[`results/${index}/note`] = item.note;
+                // Tránh lỗi Firebase "First argument contains undefined in property..."
+                if (item.final_order !== undefined) {
+                    updates[`results/${idx}/final_order`] = item.final_order;
+                    archiveUpdates[`results/${idx}/final_order`] = item.final_order;
+                }
+                if (item.note !== undefined) {
+                    updates[`results/${idx}/note`] = item.note;
+                    archiveUpdates[`results/${idx}/note`] = item.note;
+                }
             }
         });
 
@@ -2317,28 +2317,36 @@ function saveChangesToCloud() {
         archiveUpdates['dateStr'] = dateStr;
         archiveUpdates['deliveryDateStr'] = currentDeliveryDateStr;
 
-        let p1 = firebase.database().ref('latest_soq').update(updates);
-        let p2 = firebase.database().ref('archive_soq/' + dateStr).update(archiveUpdates);
+        try {
+            let p1 = firebase.database().ref('latest_soq').update(updates);
+            let p2 = firebase.database().ref('archive_soq/' + dateStr).update(archiveUpdates);
 
-        Promise.all([p1, p2]).then(() => {
-            // Xoá cờ is_dirty
-            if (Array.isArray(finalResults)) {
-                finalResults.forEach(r => { if(r) delete r.is_dirty; });
-            }
-            
-            btnSaveChanges.disabled = false;
-            btnSaveChanges.innerHTML = "✔️ Đã lưu";
-            setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
-            
-            saveToDB('soq_latest_array', finalResults);
-            resolve();
-        }).catch(err => {
-            console.error("Lỗi lưu Cloud:", err);
-            alert("Lỗi khi lưu lên Cloud: " + err.message);
+            Promise.all([p1, p2]).then(() => {
+                // Xoá cờ is_dirty
+                if (Array.isArray(finalResults)) {
+                    finalResults.forEach(r => { if(r) delete r.is_dirty; });
+                }
+                
+                btnSaveChanges.disabled = false;
+                btnSaveChanges.innerHTML = "✔️ Đã lưu";
+                setTimeout(() => { btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi"; }, 2000);
+                
+                saveToDB('soq_latest_array', finalResults);
+                resolve();
+            }).catch(err => {
+                console.error("Lỗi lưu Cloud:", err);
+                alert("Lỗi khi lưu lên Cloud: " + err.message);
+                btnSaveChanges.disabled = false;
+                btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
+                reject(err);
+            });
+        } catch (err) {
+            console.error("Lỗi đồng bộ Firebase cục bộ:", err);
+            alert("Lỗi phần mềm khi gán dữ liệu: " + err.message);
             btnSaveChanges.disabled = false;
             btnSaveChanges.innerHTML = "💾 Lưu Thay Đổi";
             reject(err);
-        });
+        }
     });
 }
 
@@ -2692,7 +2700,10 @@ if (navHistory && navDashboard) {
     });
 
     function prepHistoricalData(arr) {
-        return arr.map(item => {
+        return arr.map((item, idx) => {
+            if (item.original_index === undefined) {
+                item.original_index = idx;
+            }
             // 1. Phân tích Xu hướng (Trend)
             let trendVal = String(item.trend || '-').trim();
             let trendNum = parseFloat(trendVal.replace(/[▲▼+%\s]/g, ''));
