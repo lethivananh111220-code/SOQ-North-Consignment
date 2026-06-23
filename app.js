@@ -2275,7 +2275,7 @@ function saveChangesToCloud() {
         let userName = inputUserName ? inputUserName.value.trim() : "Hệ thống";
         if (!userName) userName = "Ẩn danh";
         const now = new Date();
-        const dateStr = currentDeliveryDateStr || now.toISOString().split('T')[0];
+        const dateStr = now.toISOString().split('T')[0]; // Phải giữ nguyên là ngày tạo (today) để Firebase match với điều kiện trong navHistory
 
         let updates = {};
         let archiveUpdates = {};
