@@ -1002,10 +1002,11 @@ btnCalculate.addEventListener('click', () => {
         const unmappedProducts = new Set(); // Tracking sản phẩm chưa được mapping
         const reverseMappingKeys = new Set(); // Dùng để kiểm tra sản phẩm lạ
         const productCategoryMap = new Map(); // Lưu nhóm hàng mảng Penalty
+        const saleAppList = []; // Lưu danh sách {saleName, odaName} để tìm kiếm tương đối
 
         if (datasets.mapping_raw && datasets.mapping_raw.length > 0) {
             let headerRow = datasets.mapping_raw[0] || [];
-            let iOda = 1, iWm = 2, iCat = 3;
+            let iOda = 1, iWm = 2, iCat = 3, iSale = -1;
 
             // Nhận diện tự động cột bằng Tên Header
             for (let c = 0; c < headerRow.length; c++) {
@@ -1013,6 +1014,7 @@ btnCalculate.addEventListener('click', () => {
                 if (h.includes('ODA')) iOda = c;
                 else if (h.includes('WM')) iWm = c;
                 else if (h.includes('NHÓM')) iCat = c;
+                else if (h.includes('SALE APP') || h.includes('MERCHANDER')) iSale = c;
             }
 
             // Bắt đầu đọc từ dòng số 2 (Bỏ qua Header)
@@ -1023,6 +1025,7 @@ btnCalculate.addEventListener('click', () => {
                 let odaName = r[iOda] ? String(r[iOda]).trim() : '';
                 let wmName = r[iWm] ? String(r[iWm]).trim().toLowerCase() : '';
                 let category = r[iCat] ? String(r[iCat]).trim().toUpperCase() : '';
+                let saleName = (iSale !== -1 && r[iSale]) ? String(r[iSale]).trim().toLowerCase() : '';
 
                 // Nếu ko có Header (file trống trơn 2 cột), chạy fallback truyền thống
                 if (!odaName && !wmName && r.length >= 2) {
@@ -1038,16 +1041,29 @@ btnCalculate.addEventListener('click', () => {
                     if (category && category !== 'NHÓM HÀNG') {
                         productCategoryMap.set(odaName.trim().toLowerCase(), category);
                     }
+                    
+                    if (saleName) {
+                        mappingMap.set(saleName, odaName);
+                        saleAppList.push({ saleName: saleName, odaName: odaName });
+                    }
                 }
             }
         }
 
         const normalizeProductName = (name) => {
+            if (!name) return '';
             let n = String(name).trim().toLowerCase();
-            // 1. Nếu là Tên WM -> Trả về Tên ODA chuẩn
+            if (!n) return '';
+            // 1. Nếu là Tên WM hoặc Tên Sale App khớp tuyệt đối -> Trả về Tên ODA chuẩn
             if (mappingMap.has(n)) return String(mappingMap.get(n)).trim();
             // 2. Nếu chính nó đã là Tên ODA chuẩn -> Trả về chính nó
             if (standardNamesSet.has(n)) return String(name).trim();
+            // 3. Tìm kiếm tương đối (kiểm tra xem tên mới có nằm trong chuỗi tên cũ ở cột Sale App hay không)
+            for (let item of saleAppList) {
+                if (item.saleName.includes(n)) {
+                    return item.odaName;
+                }
+            }
 
             // Nếu có nạp file mapping mà không thấy mã này -> Coi như không hợp lệ (Trả về null để lọc bỏ)
             if (datasets.mapping_raw && datasets.mapping_raw.length > 0) return null;
