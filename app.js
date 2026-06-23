@@ -2700,6 +2700,10 @@ if (navHistory && navDashboard) {
     });
 
     function prepHistoricalData(arr) {
+        if (!arr) return [];
+        if (!Array.isArray(arr)) {
+            arr = Object.values(arr);
+        }
         return arr.map((item, idx) => {
             if (item.original_index === undefined) {
                 item.original_index = idx;
