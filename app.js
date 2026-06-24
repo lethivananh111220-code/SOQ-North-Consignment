@@ -1117,8 +1117,28 @@ btnCalculate.addEventListener('click', () => {
                             headerTs = new Date(parseInt(matchYMD[1], 10), parseInt(matchYMD[2], 10) - 1, parseInt(matchYMD[3], 10)).getTime();
                         } else if (matchDDMMYYYY) {
                             headerTs = new Date(parseInt(matchDDMMYYYY[3], 10), parseInt(matchDDMMYYYY[2], 10) - 1, parseInt(matchDDMMYYYY[1], 10)).getTime();
+                        } else if (kClean.match(/^(\d{1,2})[\/\-](\d{1,2})$/)) {
+                            let matchDDMM = kClean.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+                            let dayNum = parseInt(matchDDMM[1], 10);
+                            let monthNum = parseInt(matchDDMM[2], 10) - 1;
+                            let dHeader = new Date(targetTimestamp);
+                            dHeader.setMonth(monthNum);
+                            dHeader.setDate(dayNum);
+                            if (monthNum > dHeader.getMonth() + 3) dHeader.setFullYear(dHeader.getFullYear() - 1);
+                            else if (monthNum < dHeader.getMonth() - 6) dHeader.setFullYear(dHeader.getFullYear() + 1);
+                            headerTs = dHeader.getTime();
+                        } else if (kClean.match(/^(\d{1,2})\s*[\-\/]?\s*(?:thg|tháng|thang)\s*(\d{1,2})$/)) {
+                            let matchThg = kClean.match(/^(\d{1,2})\s*[\-\/]?\s*(?:thg|tháng|thang)\s*(\d{1,2})$/);
+                            let dayNum = parseInt(matchThg[1], 10);
+                            let monthNum = parseInt(matchThg[2], 10) - 1;
+                            let dHeader = new Date(targetTimestamp);
+                            dHeader.setMonth(monthNum);
+                            dHeader.setDate(dayNum);
+                            if (monthNum > dHeader.getMonth() + 3) dHeader.setFullYear(dHeader.getFullYear() - 1);
+                            else if (monthNum < dHeader.getMonth() - 6) dHeader.setFullYear(dHeader.getFullYear() + 1);
+                            headerTs = dHeader.getTime();
                         } else {
-                            let dayMatch = kClean.match(/^ng(?:a|à)y(\d{1,2})/) || kClean.match(/^(\d{1,2})(?:thg|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/) || kClean.match(/^(\d{1,2})(?:mon|tue|wed|thu|fri|sat|sun|t2|t3|t4|t5|t6|t7|cn)/) || kClean.match(/^(\d{1,2})$/);
+                            let dayMatch = kClean.match(/^ng(?:a|à)y\s*[\-\/]?\s*(\d{1,2})/) || kClean.match(/^(\d{1,2})\s*[\-\/]?\s*(?:thg|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/) || kClean.match(/^(\d{1,2})\s*[\-\/]?\s*(?:mon|tue|wed|thu|fri|sat|sun|t2|t3|t4|t5|t6|t7|cn)/) || kClean.match(/^(\d{1,2})$/);
                             
                             // Xử lý riêng dạng ddmm (ví dụ 1104) nhưng cần đề phòng trùng lặp mã số khác
                             if (!dayMatch && kClean.length === 4 && !isNaN(kClean)) {
