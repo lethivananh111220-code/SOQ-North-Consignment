@@ -1110,8 +1110,8 @@ btnCalculate.addEventListener('click', () => {
                         
                         // Cố gắng parse ngày từ tên cột đã được normalize (kClean bị loại bỏ ký tự đặc biệt)
                         // Ví dụ: "20260608000000" (từ Date obj), "08062026" (từ text), "08thg6", "ngay11", "1104", "11"
-                        let matchYMD = kClean.match(/^(\d{4})(\d{2})(\d{2})(?:000000)?$/); // YYYYMMDD
-                        let matchDDMMYYYY = kClean.match(/^(\d{2})(\d{2})(\d{4})$/); // DDMMYYYY
+                        let matchYMD = kClean.match(/^(\d{4})-?(\d{2})-?(\d{2})(?:000000|\s+00:00:00)?$/); // YYYYMMDD or YYYY-MM-DD
+                        let matchDDMMYYYY = kClean.match(/^(\d{2})[\/\-]?(\d{2})[\/\-]?(\d{4})$/); // DDMMYYYY
 
                         if (matchYMD) {
                             headerTs = new Date(parseInt(matchYMD[1], 10), parseInt(matchYMD[2], 10) - 1, parseInt(matchYMD[3], 10)).getTime();
