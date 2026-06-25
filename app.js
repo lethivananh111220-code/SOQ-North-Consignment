@@ -1233,10 +1233,15 @@ btnCalculate.addEventListener('click', () => {
                         extendedDates.push(t + 7 * 86400000); // Mô phỏng chu kỳ lặp lại tuần sau
                         extendedDates.push(t + 14 * 86400000); // Tuần sau nữa
                     });
-                    let futureDates = extendedDates.filter(t => t > targetTimestamp + 3600000); // Cách ít nhất 1h
-                    if (futureDates.length > 0) {
-                        let nextTS = Math.min(...futureDates);
-                        dynamicLT = Math.round((nextTS - targetTimestamp) / 86400000);
+                    // Lọc lấy các ngày giao hàng trong tương lai (loại bỏ trùng lặp)
+                    let futureDates = [...new Set(extendedDates)].filter(t => t > targetTimestamp + 3600000); // Cách ít nhất 1h
+                    futureDates.sort((a, b) => a - b);
+                    if (futureDates.length > 1) {
+                        // Leadtime (Coverage) chính là khoảng cách giữa đợt giao tiếp theo và đợt sau đó
+                        dynamicLT = Math.round((futureDates[1] - futureDates[0]) / 86400000);
+                    } else if (futureDates.length === 1) {
+                        // Fallback nếu chỉ có 1 ngày giao
+                        dynamicLT = Math.round((futureDates[0] - targetTimestamp) / 86400000);
                     }
                 }
 
@@ -1259,7 +1264,7 @@ btnCalculate.addEventListener('click', () => {
                     let tierVal = String(row['tier'] || row['Tier'] || row['cấpđộ'] || row['phânloại'] || '').trim().toUpperCase();
                     if (tierVal && tierVal !== 'UNDEFINED') storeTierMap.set(storeID, tierVal);
 
-                    let explicitLT = Number(row['leadtime'] || row['Leadtime'] || row['chu kỳ'] || row['chukỳ'] || 0);
+                    let explicitLT = Number(row['leadtime'] || row['chuky'] || row['cycle'] || row['thoigiangiao'] || 0);
                     if (explicitLT > 0) {
                         scheduleLeadtimeMap.set(storeID, explicitLT);
                     } else if (dynamicLT > 0) {
