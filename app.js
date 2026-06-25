@@ -1259,11 +1259,11 @@ btnCalculate.addEventListener('click', () => {
                     let tierVal = String(row['tier'] || row['Tier'] || row['cấpđộ'] || row['phânloại'] || '').trim().toUpperCase();
                     if (tierVal && tierVal !== 'UNDEFINED') storeTierMap.set(storeID, tierVal);
 
-                    if (dynamicLT > 0) {
+                    let explicitLT = Number(row['leadtime'] || row['Leadtime'] || row['chu kỳ'] || row['chukỳ'] || 0);
+                    if (explicitLT > 0) {
+                        scheduleLeadtimeMap.set(storeID, explicitLT);
+                    } else if (dynamicLT > 0) {
                         scheduleLeadtimeMap.set(storeID, dynamicLT); 
-                    } else {
-                        let lt = Number(row['leadtime'] || row['Leadtime'] || row['chu kỳ'] || row['chukỳ'] || 0);
-                        if (lt > 0) scheduleLeadtimeMap.set(storeID, lt);
                     }
                 }
             });
