@@ -2122,7 +2122,7 @@ btnCalculate.addEventListener('click', () => {
             let invWarning = false;
             // Đã loại bỏ logic cảnh báo Tồn và Nhập theo yêu cầu
 
-            let invTooltip = `Tồn kho ghi nhận lúc (${strInvDate}): [ ${finalInv.toFixed(2)} ]\n- Trừ nhu cầu bán chờ hàng (${leadTimeArrival.toFixed(1)} ngày): -${demandLeadTime.toFixed(2)}\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
+            let invTooltip = `Tồn kho ghi nhận lúc (${strInvDate}): [ ${finalInv.toFixed(2)} ]\n=> Tồn dự kiến khi SOQ đến: ${expectedInvAtArrival.toFixed(2)}`;
             if (invWarning) {
                 invTooltip += `\n\n⚠️ CẢNH BÁO: Tồn và Nhập ghi nhận cùng ngày và số lượng gần bằng nhau.\nCó thể nhân viên đã đếm tồn SAU khi nhập hàng lên kệ.\nHệ thống đang cộng gộp cả hai, rủi ro dư thừa hàng!`;
             }
@@ -2238,7 +2238,7 @@ btnCalculate.addEventListener('click', () => {
                 'tip_growth': `Dự báo rải thực tế ngày giao (Khớp T2-CN): ${forecastDay.toFixed(2)}/ngày\n(Tỷ lệ tăng trưởng so với Trung bình Tháng gốc: ${mAds > 0 ? leadtimeGrowth.toFixed(1) : 0}%)`,
                 'tip_weekday': `Tính từ gốc Tháng (Lifecycle): ${weekdayQty.toFixed(2)} / ${Math.round(weekdayDaysCount)} ngày T2-T6`,
                 'tip_weekend': `Tính từ gốc Tháng (Lifecycle): ${weekendQty.toFixed(2)} / ${Math.round(weekendDaysCount)} ngày T7-CN`,
-                'tip_leadtime': `Coverage: ${coverageLT} ngày. (Chỉ tính lượng bán ra trong ${coverageLT} ngày giao hàng, không tính phần thiếu hụt trong ${leadTimeArrival.toFixed(1)} ngày chờ)`,
+                'tip_leadtime': `Coverage: ${coverageLT} ngày. (Tính tổng lượng bán ra dự kiến trong suốt chu kỳ ${coverageLT} ngày)`,
                 'tip_demand': breakdownTip,
                 'tip_inventory': invTooltip,
                 'tip_input': inputTooltip,
