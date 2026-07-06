@@ -612,10 +612,10 @@ function handleFileUpload(event, type) {
                 });
                 datasets[type] = allJson;
             } else if (type === 'schedule') {
-                let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd hh:mm:ss' });
+                // Bật raw: true để giữ nguyên object Date (nếu có) thay vì format sai
+                let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
                 let json = [];
                 
-                // Tìm dòng tiêu đề (Header Row) bằng cách quét các dòng đầu tiên xem dòng nào có 'SAP'
                 let headerIdx = -1;
                 for (let i = 0; i < Math.min(10, rawArr.length); i++) {
                     let r = rawArr[i];
@@ -632,16 +632,37 @@ function handleFileUpload(event, type) {
                         if (!row || row.length === 0) continue;
                         
                         let obj = {};
-                        // Bắt buộc Cột A (index 0) là SAP, Cột B (index 1) là Tên cửa hàng
                         obj['sap'] = row[0];
                         obj['tencuahang'] = row[1];
                         
-                        // Các cột từ C (index 2) trở đi là Ngày giao hàng
                         for (let j = 2; j < headerRow.length; j++) {
                             let h = headerRow[j];
                             if (!h) continue;
-                            let hStr = String(h).trim();
-                            let normalizedHeader = normalizeKey(hStr); 
+                            
+                            let normalizedHeader = "";
+                            if (h instanceof Date) {
+                                let d = String(h.getDate()).padStart(2, '0');
+                                let m = String(h.getMonth() + 1).padStart(2, '0');
+                                let y = h.getFullYear();
+                                normalizedHeader = `${d}${m}${y}`;
+                            } else if (typeof h === 'number' && h > 40000) {
+                                let date = new Date(Math.round((h - 25569) * 86400 * 1000));
+                                let d = String(date.getDate()).padStart(2, '0');
+                                let m = String(date.getMonth() + 1).padStart(2, '0');
+                                let y = date.getFullYear();
+                                normalizedHeader = `${d}${m}${y}`;
+                            } else {
+                                let hStr = String(h).trim();
+                                let match = hStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+                                if (match) {
+                                    let d = match[1].padStart(2, '0');
+                                    let m = match[2].padStart(2, '0');
+                                    let y = match[3];
+                                    normalizedHeader = `${d}${m}${y}`;
+                                } else {
+                                    normalizedHeader = normalizeKey(hStr); 
+                                }
+                            }
                             
                             if (row[j] !== undefined && row[j] !== null && String(row[j]).trim() !== '') {
                                 obj[normalizedHeader] = row[j];
