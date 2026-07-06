@@ -612,7 +612,7 @@ function handleFileUpload(event, type) {
                 });
                 datasets[type] = allJson;
             } else if (type === 'schedule') {
-                let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+                let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd hh:mm:ss' });
                 let json = [];
                 if (rawArr.length > 2) {
                     let headerRow = rawArr[2];
