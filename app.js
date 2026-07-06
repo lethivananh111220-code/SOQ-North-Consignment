@@ -614,21 +614,34 @@ function handleFileUpload(event, type) {
             } else if (type === 'schedule') {
                 let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd hh:mm:ss' });
                 let json = [];
-                if (rawArr.length > 2) {
-                    let headerRow = rawArr[2];
-                    for (let i = 3; i < rawArr.length; i++) {
+                
+                // Tìm dòng tiêu đề (Header Row) bằng cách quét các dòng đầu tiên xem dòng nào có 'SAP'
+                let headerIdx = -1;
+                for (let i = 0; i < Math.min(10, rawArr.length); i++) {
+                    let r = rawArr[i];
+                    if (r && r.some(c => typeof c === 'string' && c.toUpperCase().includes('SAP'))) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
+                
+                if (headerIdx !== -1) {
+                    let headerRow = rawArr[headerIdx];
+                    for (let i = headerIdx + 1; i < rawArr.length; i++) {
                         let row = rawArr[i];
                         if (!row || row.length === 0) continue;
                         
                         let obj = {};
+                        // Bắt buộc Cột A (index 0) là SAP, Cột B (index 1) là Tên cửa hàng
                         obj['sap'] = row[0];
                         obj['tencuahang'] = row[1];
                         
+                        // Các cột từ C (index 2) trở đi là Ngày giao hàng
                         for (let j = 2; j < headerRow.length; j++) {
                             let h = headerRow[j];
                             if (!h) continue;
                             let hStr = String(h).trim();
-                            let normalizedHeader = normalizeKey(hStr); // Đồng nhất với hàm normalizeKey toàn cục
+                            let normalizedHeader = normalizeKey(hStr); 
                             
                             if (row[j] !== undefined && row[j] !== null && String(row[j]).trim() !== '') {
                                 obj[normalizedHeader] = row[j];
