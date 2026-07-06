@@ -612,7 +612,7 @@ function handleFileUpload(event, type) {
                 });
                 datasets[type] = allJson;
             } else if (type === 'schedule') {
-                // Bật raw: true để giữ nguyên object Date (nếu có) thay vì format sai
+                // Enable raw: true to get native Date objects
                 let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
                 let json = [];
                 
