@@ -2204,7 +2204,10 @@ btnCalculate.addEventListener('click', () => {
             let storeNameStr = storeNamesMap.get(data.storeID) || data.storeOrig;
 
             let totalDemandRaw = totalDemand + penaltyApplied;
-            let breakdownTip = `Công thức: Demand (Nhu cầu gốc) + SafetyStock. \n- Nhu cầu gốc (Coverage): ${coverageDemandBase.toFixed(2)}\n- SafetyStock: +${safetyStock.toFixed(2)} \n- Penalty (Giảm trừ): -${penaltyApplied.toFixed(2)}`;
+            let breakdownTip = Công thức: Demand (Nhu cầu gốc) + SafetyStock. 
+- Nhu cầu gốc (Coverage): 
+- SafetyStock: + 
+- Penalty (Giảm trừ): -;
 
             finalResults.push({
                 'original_index': finalResults.length,
@@ -2219,7 +2222,7 @@ btnCalculate.addEventListener('click', () => {
                 'ads_weekend': weekendAds.toFixed(2),
                 'growth': mAds > 0 ? `${leadtimeGrowth.toFixed(1)}%` : (basePeriodDemand > 0 ? 'New' : '0%'),
                 'growthHtml': growthHtml,
-                'leadtime': coverageLT,
+                'leadtime': totalLeadtime,
                 'demand': (totalDemand + penaltyApplied).toFixed(2),
                 'demandRaw': totalDemandRaw.toFixed(2),
                 'inventory': Number(finalInv.toFixed(2)),
@@ -2238,7 +2241,7 @@ btnCalculate.addEventListener('click', () => {
                 'tip_growth': `Dự báo rải thực tế ngày giao (Khớp T2-CN): ${forecastDay.toFixed(2)}/ngày\n(Tỷ lệ tăng trưởng so với Trung bình Tháng gốc: ${mAds > 0 ? leadtimeGrowth.toFixed(1) : 0}%)`,
                 'tip_weekday': `Tính từ gốc Tháng (Lifecycle): ${weekdayQty.toFixed(2)} / ${Math.round(weekdayDaysCount)} ngày T2-T6`,
                 'tip_weekend': `Tính từ gốc Tháng (Lifecycle): ${weekendQty.toFixed(2)} / ${Math.round(weekendDaysCount)} ngày T7-CN`,
-                'tip_leadtime': `Coverage: ${coverageLT} ngày. (Tính tổng lượng bán ra dự kiến trong suốt chu kỳ ${coverageLT} ngày)`,
+                'tip_leadtime': `Coverage: ${totalLeadtime} ngày. (Tính tổng lượng bán ra dự kiến trong suốt chu kỳ ${totalLeadtime} ngày)`,
                 'tip_demand': breakdownTip,
                 'tip_inventory': invTooltip,
                 'tip_input': inputTooltip,
