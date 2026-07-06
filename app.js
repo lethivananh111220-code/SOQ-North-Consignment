@@ -611,6 +611,35 @@ function handleFileUpload(event, type) {
                     if (json && json.length > 0) allJson = allJson.concat(json);
                 });
                 datasets[type] = allJson;
+            } else if (type === 'schedule') {
+                let rawArr = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+                let json = [];
+                if (rawArr.length > 2) {
+                    let headerRow = rawArr[2];
+                    for (let i = 3; i < rawArr.length; i++) {
+                        let row = rawArr[i];
+                        if (!row || row.length === 0) continue;
+                        
+                        let obj = {};
+                        obj['sap'] = row[0];
+                        obj['tencuahang'] = row[1];
+                        
+                        for (let j = 2; j < headerRow.length; j++) {
+                            let h = headerRow[j];
+                            if (!h) continue;
+                            let hStr = String(h).trim();
+                            let normalizedHeader = normalizeKey(hStr); // Đồng nhất với hàm normalizeKey toàn cục
+                            
+                            if (row[j] !== undefined && row[j] !== null && String(row[j]).trim() !== '') {
+                                obj[normalizedHeader] = row[j];
+                            }
+                        }
+                        if (obj['sap']) {
+                            json.push(obj);
+                        }
+                    }
+                }
+                datasets[type] = json;
             } else {
                 const json = extractJsonDataCleanly(worksheet);
                 datasets[type] = json;
@@ -1955,32 +1984,25 @@ btnCalculate.addEventListener('click', () => {
             }
 
             // --- TÍNH TOÁN LEAD TIME TỔNG CỘNG ---
-            // 1. Lead Time Arrival: Từ ngày T (Master Date) đến ngày Giao hàng (Target Delivery)
             let T = storeMasterDateMap.get(data.storeID) || 0;
             let invData = inventoryMap.get(key) || { currentInv: 0, currentDisp: 0, prevInv: 0, prevInvDate: 0 };
             let inputData = inputMap.get(key) || { currentInput: 0, prevInput: 0, prevInputDate: 0 };
 
             let invDate = T > 0 ? T : new Date().setHours(0, 0, 0, 0);
-            let leadTimeArrival = 0;
+            let totalLeadtime = 0;
             if (targetTimestamp > 0) {
-                leadTimeArrival = Math.max(0, (targetTimestamp - invDate) / (1000 * 60 * 60 * 24));
+                // Công thức mới: Leadtime = Ngày giao tiếp theo - Ngày lên đơn + 1
+                totalLeadtime = Math.max(0, (targetTimestamp - invDate) / (1000 * 60 * 60 * 24)) + 1;
+            } else {
+                // Fallback nếu không có lịch giao hàng
+                totalLeadtime = extractLeadtimeFromFilename(scheduleFileName);
             }
 
-            // 2. Coverage Leadtime: Khoảng cách giữa các đợt giao (lấy từ matrix lịch)
-            let coverageLT = scheduleLeadtimeMap.has(data.storeID) ? scheduleLeadtimeMap.get(data.storeID) : extractLeadtimeFromFilename(scheduleFileName);
-
-            let totalLeadtime = leadTimeArrival + coverageLT;
-            
             let basePeriodDemand = calculatePeriodDemand(invDate, totalLeadtime, weekdayAds, weekendAds);
             
-            // Tách Demand dự kiến lúc chờ hàng (tránh âm kho dồn vào SOQ gây overstock)
-            let leadTimeDemandBase = calculatePeriodDemand(invDate, leadTimeArrival, weekdayAds, weekendAds);
-            let demandLeadTime = leadTimeDemandBase;
-
-            // Demand kỳ bán SOQ (Chỉ tính Coverage)
-            let coverageStartDate = invDate + (leadTimeArrival * 24 * 60 * 60 * 1000);
-            let coverageDemandBase = calculatePeriodDemand(coverageStartDate, coverageLT, weekdayAds, weekendAds);
-            let totalDemand = coverageDemandBase;
+            // Gộp tất cả Demand vào cùng 1 khoảng Leadtime, không còn tách Demand Chờ hàng và Demand Bán hàng
+            let demandLeadTime = 0; 
+            let totalDemand = basePeriodDemand;
 
             // --- NEW: Tăng trưởng theo Leadtime (Đối chiếu Weekly vs Monthly trên từng Thứ) ---
             let leadtimeGrowth = 0;
@@ -2013,9 +2035,9 @@ btnCalculate.addEventListener('click', () => {
             let safetyStock = 0;
             if (forecastDay > 0) {
                 if (tierLevel === 1) {
-                    safetyStock = isWeekendDelivery ? (weekendAds * coverageLT * 0.30) : (weekdayAds * coverageLT * 0.15);
+                    safetyStock = isWeekendDelivery ? (weekendAds * totalLeadtime * 0.30) : (weekdayAds * totalLeadtime * 0.15);
                 } else if (tierLevel === 2) {
-                    safetyStock = isWeekendDelivery ? (weekendAds * coverageLT * 0.20) : (weekdayAds * coverageLT * 0.10);
+                    safetyStock = isWeekendDelivery ? (weekendAds * totalLeadtime * 0.20) : (weekdayAds * totalLeadtime * 0.10);
                 }
                 totalDemand += safetyStock;
             }
