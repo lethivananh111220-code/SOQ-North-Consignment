@@ -1247,26 +1247,11 @@ btnCalculate.addEventListener('click', () => {
                         let sapStr = String(storeID).trim().toLowerCase();
                         let isDeliveryFound = false;
 
-                        // Theo yêu cầu mới: Tên cửa hàng nếu xuất hiện vào ngày giao hàng tức có giao hàng
-                        if (cellValue && storeNameStr && cellValue.includes(storeNameStr)) {
-                            isDeliveryFound = true;
-                        } else if (cellValue && sapStr && cellValue.includes(sapStr)) {
+                        // Công thức thông minh: Bất kỳ ô nào trong cột Lịch Giao Hàng có chứa dữ liệu (khác rỗng)
+                        // đều được coi là CÓ lịch giao hàng. Điều này giúp tránh lỗi gõ sai tên cửa hàng.
+                        if (cellValue && cellValue !== '0' && cellValue !== 'false' && cellValue !== 'no') {
                             isDeliveryFound = true;
                         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
                         if (isDeliveryFound) {
                             if (match) {
@@ -1289,22 +1274,26 @@ btnCalculate.addEventListener('click', () => {
                     // Nếu không có lịch giao -> Bỏ qua
                     if (!hasDelivery) return;
 
-                    // --- TÍNH TOÁN LEADTIME ĐỘNG TỪ MA TRẬN LỊCH GIAO HÀNG (Dạng Timestamp) ---
+                    // --- TÍNH TOÁN LEADTIME ĐỘNG THEO CÔNG THỨC MỚI YÊU CẦU ---
+                    // Công thức thống nhất: Leadtime = Ngày giao hàng tiếp theo - Ngày lên đơn hàng + 1
                     let extendedDates = [];
                     possibleNextDeliveryTimestamps.forEach(t => {
                         extendedDates.push(t);
                         extendedDates.push(t + 7 * 86400000); // Mô phỏng chu kỳ lặp lại tuần sau
                         extendedDates.push(t + 14 * 86400000); // Tuần sau nữa
                     });
-                    // Lọc lấy các ngày giao hàng trong tương lai (loại bỏ trùng lặp)
+                    
+                    // Lọc lấy các ngày giao hàng TRONG TƯƠNG LAI (lớn hơn ngày giao hiện tại)
                     let futureDates = [...new Set(extendedDates)].filter(t => t > targetTimestamp + 3600000); // Cách ít nhất 1h
                     futureDates.sort((a, b) => a - b);
-                    if (futureDates.length > 1) {
-                        // Leadtime (Coverage) chính là khoảng cách giữa đợt giao tiếp theo và đợt sau đó
-                        dynamicLT = Math.round((futureDates[1] - futureDates[0]) / 86400000);
-                    } else if (futureDates.length === 1) {
-                        // Fallback nếu chỉ có 1 ngày giao
-                        dynamicLT = Math.round((futureDates[0] - targetTimestamp) / 86400000);
+                    
+                    if (futureDates.length > 0) {
+                        let nextDeliveryTs = futureDates[0];
+                        // Ngày lên đơn hàng = targetTimestamp - 1 ngày
+                        let orderDateTs = targetTimestamp - 86400000;
+                        
+                        // Công thức: (Next - Order) + 1
+                        dynamicLT = Math.round((nextDeliveryTs - orderDateTs) / 86400000) + 1;
                     }
                 }
 
@@ -1395,7 +1384,8 @@ btnCalculate.addEventListener('click', () => {
                 return lookedUp;
             };
 
-            if (extracted && !isNaN(parseInt(extracted))) {
+            // Dùng mã SAP (extracted) làm chuẩn, không quan tâm là số hay chữ.
+            if (extracted) {
                 finalID = extracted;
                 if (!reverseStoreNamesMap.has(finalID) && nKey) {
                     let lookedUpName = lookupName();
@@ -3348,9 +3338,12 @@ async function loadWeeklyReview(startDateStr, endDateStr, filterMode) {
                 
                 if (st) {
                     let sap = extractSAP(st);
-                    if (sap && isNaN(parseInt(sap))) {
-                        let lookedUp = globalReverseStoreNamesMap.get(normalizeKey(st));
-                        if (lookedUp) sap = lookedUp;
+                    if (sap) {
+                        // Nếu sap chưa có trong danh sách gốc, thử tìm kiếm như một tên/nickname
+                        if (!globalReverseStoreNamesMap.has(sap)) {
+                            let lookedUp = globalReverseStoreNamesMap.get(normalizeKey(st));
+                            if (lookedUp) sap = lookedUp;
+                        }
                     }
                     if (!sap) return;
                     
