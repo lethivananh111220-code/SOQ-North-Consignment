@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            fetch('http://127.0.0.1:8081', {method: 'POST', body: msg + ' at line ' + line + ' col ' + col});
+        };
+    </script>
+    <script src="app.js"></script>
+</head>
+<body>
+    <div id="out">OK</div>
+    <!-- Add the required HTML elements -->
+    <input type="file" id="file-schedule">
+    <span id="status-schedule"></span>
+    
+    <!-- Include the main logic -->
+    <script src="app.js"></script>
+
+    <script>
+        setTimeout(() => {
+            try {
+                // Create a mock file
+                const content = "sap,tencuahang,22032026\n123,Store,1";
+                const file = new File([content], "schedule.csv", { type: "text/csv" });
+                
+                // Trigger event
+                const input = document.getElementById('file-schedule');
+                
+                // We have to mock the files array
+                Object.defineProperty(input, 'files', {
+                    value: [file],
+                    writable: false
+                });
+                
+                const event = new Event('change');
+                input.dispatchEvent(event);
+                
+                setTimeout(() => {
+                    fetch('http://127.0.0.1:8081', {method: 'POST', body: 'SIMULATION DONE'});
+                }, 1000);
+            } catch (err) {
+                fetch('http://127.0.0.1:8081', {method: 'POST', body: 'SIMULATION ERR: ' + err.message + '\n' + err.stack});
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
