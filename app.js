@@ -2403,7 +2403,7 @@ btnExport.addEventListener('click', () => {
         "Mã SAP (Store)", "Tên Cửa Hàng", "Khu Vực", "Tên Sản Phẩm", 
         "Trung Bình Bán/Ngày", "Xu Hướng (%)", "ADS T2-T6", "ADS T7-CN", 
         "XU HƯỚNG GIAO (%)", "Leadtime", "Total Demand", "Tồn (Inv)", 
-        "Nhập (Input)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
+        "Nhập (Input)", "Nhập (ODA)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
     ];
     rawAoa.push(rawHeaders);
     
@@ -2428,6 +2428,7 @@ btnExport.addEventListener('click', () => {
             item.demandRaw,
             item.inventory,
             item.input,
+            item.oda_input !== undefined ? item.oda_input : '',
             item.penalty,
             item.soq,
             item.xu_huong || '',
@@ -2956,6 +2957,7 @@ function renderSOQTable(data) {
             <td title="${item.tip_demand}">${item.demandRaw}</td>
             <td class="warning" title="${item.tip_inventory}">${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
+            <td class="highlight" title="Nhập (ODA)">${item.oda_input !== undefined ? item.oda_input : '-'}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
             <td class="highlight">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
