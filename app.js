@@ -1,11 +1,11 @@
 // --- CẤU HÌNH FIREBASE ---
 // Bạn cần lấy thông tin này từ Firebase Console (https://console.firebase.google.com/)
 const firebaseConfig = {
-    apiKey: "AIzaSyAXLLILSZAmquyIJCXOS3z8ZiPIBvZoQio",
-    authDomain: "soq-north-consignment.firebaseapp.com",
-    databaseURL: "https://soq-north-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "soq-north-consignment",
-    storageBucket: "soq-north-consignment.firebasestorage.app",
+    apiKey: "AIzaSyBHG5WoQVon5lgoyZNZ7agIVYJDjyZdRrY",
+    authDomain: "soq-south-consignment.firebaseapp.com",
+    databaseURL: "https://soq-south-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "soq-south-consignment",
+    storageBucket: "soq-south-consignment.firebasestorage.app",
     messagingSenderId: "491007756368",
     appId: "1:491007756368:web:8ea77f51a2a0f3b151a955",
     measurementId: "G-MSG7VKL5QQ"
@@ -1464,7 +1464,7 @@ btnCalculate.addEventListener('click', () => {
                 let prod = row['productnameprimarylanguage'] || row['productname'] || row['product'] || row['tensanphamwm'] || row['tensanpham'] || row['articlename'] || row['article'];
                 let status = String(row['orderstatus'] || row['status'] || row['trangthai'] || '').toLowerCase();
                 
-                if (!prod) return;
+                                if (!prod) return;
                 // Lọc bỏ hàng Hủy / Đã hoàn (Chỉ lấy Completed)
                 if (status && (status.includes('cancel') || status.includes('hủy') || status.includes('reject'))) return;
 
@@ -1504,6 +1504,7 @@ btnCalculate.addEventListener('click', () => {
                     inputMap.set(key, {
                         currentInput: 0,
                         prevInput: 0, prevInputDate: 0,
+                        latestOdaInput: 0, latestOdaDate: 0,
                         prodOrig: exactODAName
                     });
                 }
@@ -1518,6 +1519,14 @@ btnCalculate.addEventListener('click', () => {
                     } else if (cDeliveryDate === current.prevInputDate) {
                         current.prevInput += qty;
                     }
+                }
+                
+                let storeLatestOrderDate = storeMaxOrderDateMap.get(storeID) || 0;
+                let storeLatestDeliveryDate = storeLatestOrderDate > 0 ? storeLatestOrderDate + 86400000 : 0;
+                
+                if (cDeliveryDate === storeLatestDeliveryDate) {
+                    current.latestOdaDate = storeLatestDeliveryDate;
+                    current.latestOdaInput = (current.latestOdaInput || 0) + qty;
                 }
             });
         }
@@ -1964,6 +1973,8 @@ btnCalculate.addEventListener('click', () => {
 
             if (periodAdsMonthly > 0 && totalLeadtime > 0 && periodAdsWeekly > 0) {
                 leadtimeGrowth = ((periodAdsWeekly - periodAdsMonthly) / periodAdsMonthly) * 100;
+                
+                
                 if (leadtimeGrowth > 0) growthHtml = `<span style="color: var(--success)">+${leadtimeGrowth.toFixed(1)}%</span>`;
                 else if (leadtimeGrowth < 0) growthHtml = `<span style="color: var(--danger)">${leadtimeGrowth.toFixed(1)}%</span>`;
                 else growthHtml = `0%`;
@@ -2056,7 +2067,7 @@ btnCalculate.addEventListener('click', () => {
             }
 
             let soq = totalDemand - expectedInvAtArrival;
-            soq = Math.max(Math.ceil(soq), 0);
+            soq = Math.max(Math.round(soq), 0);
 
             let itemKey = `${data.storeID}_${data.prodStd.toLowerCase()}`;
             let trendAction = trendReportMap.get(itemKey) || '';
@@ -2101,6 +2112,7 @@ btnCalculate.addEventListener('click', () => {
                 'demandRaw': totalDemandRaw.toFixed(2),
                 'inventory': Number(finalInv.toFixed(2)),
                 'input': Number(finalInput.toFixed(2)),
+                  'oda_input': Number((inputData.latestOdaInput || 0).toFixed(2)),
                 'penalty': penaltyApplied > 0 ? `-${penaltyApplied.toFixed(2)}` : '0',
                 'soq': soq,
                 'xu_huong': trendAction,
@@ -2117,6 +2129,7 @@ btnCalculate.addEventListener('click', () => {
                 'tip_demand': breakdownTip,
                 'tip_inventory': invTooltip,
                 'tip_input': inputTooltip,
+                  'tip_oda_input': `Nhập ODA: ${(inputData.latestOdaInput || 0).toFixed(2)}\n(Ngày giao ODA gần nhất: ${inputData.latestOdaDate > 0 ? new Date(inputData.latestOdaDate).toLocaleDateString('en-GB') : 'N/A'})`,
                 'tip_penalty': disposalTooltip
             });
         });
@@ -2961,6 +2974,7 @@ function renderSOQTable(data) {
             <td title="${item.tip_demand}">${item.demandRaw}</td>
             <td class="warning" title="${item.tip_inventory}">${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
+            <td class="highlight" style="color: #00bcd4;" title="${item.tip_oda_input}">${item.oda_input}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
             <td class="highlight">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
