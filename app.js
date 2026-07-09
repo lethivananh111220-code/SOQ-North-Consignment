@@ -1,11 +1,11 @@
 // --- CẤU HÌNH FIREBASE ---
 // Bạn cần lấy thông tin này từ Firebase Console (https://console.firebase.google.com/)
 const firebaseConfig = {
-    apiKey: "AIzaSyAXLLILSZAmquyIJCXOS3z8ZiPIBvZoQio",
-    authDomain: "soq-north-consignment.firebaseapp.com",
-    databaseURL: "https://soq-north-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "soq-north-consignment",
-    storageBucket: "soq-north-consignment.firebasestorage.app",
+    apiKey: "AIzaSyBHG5WoQVon5lgoyZNZ7agIVYJDjyZdRrY",
+    authDomain: "soq-south-consignment.firebaseapp.com",
+    databaseURL: "https://soq-south-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "soq-south-consignment",
+    storageBucket: "soq-south-consignment.firebasestorage.app",
     messagingSenderId: "491007756368",
     appId: "1:491007756368:web:8ea77f51a2a0f3b151a955",
     measurementId: "G-MSG7VKL5QQ"
@@ -1338,6 +1338,7 @@ btnCalculate.addEventListener('click', () => {
         const storeMaxInvDateMap = new Map();
         const storeMaxOrderDateMap = new Map();
 
+        window.dateFmtDetected = 0;
         if (datasets.inventory && datasets.inventory.length > 0) {
             datasets.inventory.forEach(row => {
                 let store = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'] || row['article'];
@@ -1356,6 +1357,7 @@ btnCalculate.addEventListener('click', () => {
             });
         }
 
+        window.dateFmtDetected = 0;
         if (datasets.input && datasets.input.length > 0) {
             datasets.input.forEach(row => {
                 let rawSap = extractSAP(row['sap'] || row['storecode'] || row['mach'] || row['macuahang'] || row['sapcode']);
@@ -1390,6 +1392,7 @@ btnCalculate.addEventListener('click', () => {
 
         // --- 3. Inventory Aggregation ---
         const inventoryMap = new Map();
+        window.dateFmtDetected = 0;
         if (datasets.inventory && datasets.inventory.length > 0) {
             datasets.inventory.forEach(row => {
                 let store = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'];
@@ -1435,7 +1438,7 @@ btnCalculate.addEventListener('click', () => {
                 }
 
                 let data = inventoryMap.get(key);
-                if (cDate === T) {
+                                if (cDate === T) {
                     data.currentInv += inv;
                     data.currentDisp += disp;
                 } else if (cDate < T) {
@@ -1453,7 +1456,9 @@ btnCalculate.addEventListener('click', () => {
         // ----------- 4. Input ODA Aggregation -----------
         const inputMap = new Map();
         const actualODA_Names = new Map(); // Lưu Tên ODA chuẩn nhất từ file vận hành
+        let globalLatestOdaDate = 0;
 
+        window.dateFmtDetected = 0;
         if (datasets.input && datasets.input.length > 0) {
             datasets.input.forEach(row => {
                 let prod = row['productnameprimarylanguage'] || row['productname'] || row['product'] || row['tensanphamwm'] || row['tensanpham'] || row['articlename'] || row['article'];
@@ -1493,27 +1498,17 @@ btnCalculate.addEventListener('click', () => {
                 let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Cộng thêm 1 ngày giao
 
                 let T = storeMasterDateMap.get(storeID);
+                if (!T || cDeliveryDate > T) return;
 
                 if (!inputMap.has(key)) {
                     inputMap.set(key, {
                         currentInput: 0,
                         prevInput: 0, prevInputDate: 0,
-                        prodOrig: exactODAName,
-                        latestOdaInput: 0, latestOdaDate: 0
+                        prodOrig: exactODAName
                     });
                 }
 
                 let current = inputMap.get(key);
-                
-                if (cDeliveryDate > current.latestOdaDate) {
-                    current.latestOdaDate = cDeliveryDate;
-                    current.latestOdaInput = qty;
-                } else if (cDeliveryDate === current.latestOdaDate) {
-                    current.latestOdaInput += qty;
-                }
-
-                if (!T || cDeliveryDate > T) return;
-
                 if (cDeliveryDate === T) {
                     current.currentInput += qty;
                 } else if (cDeliveryDate < T) {
@@ -2002,8 +1997,6 @@ btnCalculate.addEventListener('click', () => {
             let finalInv = invData.currentInv || 0;
             let finalDisp = invData.currentDisp || 0;
             let finalInput = inputData.currentInput || 0;
-            let latestOdaInput = inputData.latestOdaInput || 0;
-            let latestOdaDate = inputData.latestOdaDate || 0;
 
             let prevInv = invData.prevInv || 0;
             let prevInput = inputData.prevInput || 0;
@@ -2089,7 +2082,7 @@ btnCalculate.addEventListener('click', () => {
             let storeNameStr = storeNamesMap.get(data.storeID) || data.storeOrig;
 
             let totalDemandRaw = totalDemand + penaltyApplied;
-            let breakdownTip = `Công thức: Demand (Nhu cầu gốc) + SafetyStock. \n- Nhu cầu gốc (Coverage): ${basePeriodDemand.toFixed(2)}\n- SafetyStock: +${safetyStock.toFixed(2)} \n- Penalty (Giảm trừ): -${penaltyApplied.toFixed(2)}`;
+            let breakdownTip = `Công thức: Demand (Nhu cầu gốc) + SafetyStock. \n- Nhu cầu gốc (Coverage): ${coverageDemandBase.toFixed(2)}\n- SafetyStock: +${safetyStock.toFixed(2)} \n- Penalty (Giảm trừ): -${penaltyApplied.toFixed(2)}`;
 
             finalResults.push({
                 'sap': data.storeID,
@@ -2108,8 +2101,6 @@ btnCalculate.addEventListener('click', () => {
                 'demandRaw': totalDemandRaw.toFixed(2),
                 'inventory': Number(finalInv.toFixed(2)),
                 'input': Number(finalInput.toFixed(2)),
-                'oda_input': Number(latestOdaInput.toFixed(2)),
-                'oda_date_str': formatDateStr(latestOdaDate),
                 'penalty': penaltyApplied > 0 ? `-${penaltyApplied.toFixed(2)}` : '0',
                 'soq': soq,
                 'xu_huong': trendAction,
@@ -2417,7 +2408,7 @@ btnExport.addEventListener('click', () => {
         "Mã SAP (Store)", "Tên Cửa Hàng", "Khu Vực", "Tên Sản Phẩm", 
         "Trung Bình Bán/Ngày", "Xu Hướng (%)", "ADS T2-T6", "ADS T7-CN", 
         "XU HƯỚNG GIAO (%)", "Leadtime", "Total Demand", "Tồn (Inv)", 
-        "Nhập (Input)", "Nhập (ODA)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
+        "Nhập (Input)", "Giảm trừ", "SOQ (GỢI Ý)", "Xu hướng", "SL ĐẶT", "GHI CHÚ"
     ];
     rawAoa.push(rawHeaders);
     
@@ -2442,7 +2433,6 @@ btnExport.addEventListener('click', () => {
             item.demandRaw,
             item.inventory,
             item.input,
-            item.oda_input !== undefined ? item.oda_input : '',
             item.penalty,
             item.soq,
             item.xu_huong || '',
@@ -2971,7 +2961,6 @@ function renderSOQTable(data) {
             <td title="${item.tip_demand}">${item.demandRaw}</td>
             <td class="warning" title="${item.tip_inventory}">${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
-            <td class="highlight" title="Nhập (ODA) ghi nhận ngày ${item.oda_date_str}">${item.oda_input}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
             <td class="highlight">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
