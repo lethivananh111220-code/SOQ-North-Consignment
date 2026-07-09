@@ -1,11 +1,11 @@
 // --- CẤU HÌNH FIREBASE ---
 // Bạn cần lấy thông tin này từ Firebase Console (https://console.firebase.google.com/)
 const firebaseConfig = {
-    apiKey: "AIzaSyBHG5WoQVon5lgoyZNZ7agIVYJDjyZdRrY",
-    authDomain: "soq-south-consignment.firebaseapp.com",
-    databaseURL: "https://soq-south-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "soq-south-consignment",
-    storageBucket: "soq-south-consignment.firebasestorage.app",
+    apiKey: "AIzaSyAXLLILSZAmquyIJCXOS3z8ZiPIBvZoQio",
+    authDomain: "soq-north-consignment.firebaseapp.com",
+    databaseURL: "https://soq-north-consignment-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "soq-north-consignment",
+    storageBucket: "soq-north-consignment.firebasestorage.app",
     messagingSenderId: "491007756368",
     appId: "1:491007756368:web:8ea77f51a2a0f3b151a955",
     measurementId: "G-MSG7VKL5QQ"
