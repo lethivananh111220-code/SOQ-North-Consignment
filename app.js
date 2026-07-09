@@ -1493,17 +1493,27 @@ btnCalculate.addEventListener('click', () => {
                 let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Cộng thêm 1 ngày giao
 
                 let T = storeMasterDateMap.get(storeID);
-                if (!T || cDeliveryDate > T) return;
 
                 if (!inputMap.has(key)) {
                     inputMap.set(key, {
                         currentInput: 0,
                         prevInput: 0, prevInputDate: 0,
-                        prodOrig: exactODAName
+                        prodOrig: exactODAName,
+                        latestOdaInput: 0, latestOdaDate: 0
                     });
                 }
 
                 let current = inputMap.get(key);
+                
+                if (cDeliveryDate > current.latestOdaDate) {
+                    current.latestOdaDate = cDeliveryDate;
+                    current.latestOdaInput = qty;
+                } else if (cDeliveryDate === current.latestOdaDate) {
+                    current.latestOdaInput += qty;
+                }
+
+                if (!T || cDeliveryDate > T) return;
+
                 if (cDeliveryDate === T) {
                     current.currentInput += qty;
                 } else if (cDeliveryDate < T) {
@@ -1992,6 +2002,8 @@ btnCalculate.addEventListener('click', () => {
             let finalInv = invData.currentInv || 0;
             let finalDisp = invData.currentDisp || 0;
             let finalInput = inputData.currentInput || 0;
+            let latestOdaInput = inputData.latestOdaInput || 0;
+            let latestOdaDate = inputData.latestOdaDate || 0;
 
             let prevInv = invData.prevInv || 0;
             let prevInput = inputData.prevInput || 0;
@@ -2096,6 +2108,8 @@ btnCalculate.addEventListener('click', () => {
                 'demandRaw': totalDemandRaw.toFixed(2),
                 'inventory': Number(finalInv.toFixed(2)),
                 'input': Number(finalInput.toFixed(2)),
+                'oda_input': Number(latestOdaInput.toFixed(2)),
+                'oda_date_str': formatDateStr(latestOdaDate),
                 'penalty': penaltyApplied > 0 ? `-${penaltyApplied.toFixed(2)}` : '0',
                 'soq': soq,
                 'xu_huong': trendAction,
@@ -2957,7 +2971,7 @@ function renderSOQTable(data) {
             <td title="${item.tip_demand}">${item.demandRaw}</td>
             <td class="warning" title="${item.tip_inventory}">${item.inventory}</td>
             <td class="highlight" title="${item.tip_input}">${item.input}</td>
-            <td class="highlight" title="Nhập (ODA)">${item.oda_input !== undefined ? item.oda_input : '-'}</td>
+            <td class="highlight" title="Nhập (ODA) ghi nhận ngày ${item.oda_date_str}">${item.oda_input}</td>
             <td style="color:${item.penalty !== '0' ? 'var(--danger)' : ''}" title="${item.tip_penalty}">${item.penalty}</td>
             <td class="highlight">${item.soq}</td>
             <td>${item.xu_huong_html || '<span>-</span>'}</td>
