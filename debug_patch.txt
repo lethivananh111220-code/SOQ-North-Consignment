@@ -1,0 +1,728 @@
+// --- BƯỚC 0: TÌM NGÀY LỚN NHẤT CỦA TỪNG STORE LÀM MỐC (T) ---
+        const storeMaxInvDateMap = new Map();
+        const storeMaxOrderDateMap = new Map();
+
+        window.dateFmtDetected = 0;
+        if (datasets.inventory && datasets.inventory.length > 0) {
+            datasets.inventory.forEach(row => {
+                let store = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'] || row['article'];
+                if (!store) return;
+                let storeID = extractSAP(store);
+                if (storeID && isNaN(parseInt(storeID))) {
+                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(store));
+                    if (lookedUp) storeID = lookedUp;
+                }
+                let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
+                let cDate = parseDateStrToTime(rawDate);
+                if (cDate > 0) {
+                    let currentMax = storeMaxInvDateMap.get(storeID) || 0;
+                    if (cDate > currentMax) storeMaxInvDateMap.set(storeID, cDate);
+                }
+            });
+        }
+
+        window.dateFmtDetected = 0;
+        if (datasets.input && datasets.input.length > 0) {
+            datasets.input.forEach(row => {
+                let rawSap = extractSAP(row['sap'] || row['storecode'] || row['mach'] || row['macuahang'] || row['sapcode']);
+                let nick = row['nickname'] || row['storename'] || row['store'] || row['tencuahang'] || row['sap'] || '';
+                let storeID = resolveStoreID(rawSap, nick);
+                if (!storeID) return;
+                let rawDate = row['orderdate'] || row['Order date'] || row['completeddate'] || row['Completed date'] || row['date'] || row['ngaydathang'] || row['ngay'] || row['ngaytao'] || row['createddate'] || 0;
+                let cDate = parseDateStrToTime(rawDate);
+                if (cDate > 0) {
+                    let currentMax = storeMaxOrderDateMap.get(storeID) || 0;
+                    if (cDate > currentMax) storeMaxOrderDateMap.set(storeID, cDate);
+                }
+            });
+        }
+
+        const storeMasterDateMap = new Map();
+        for (let storeID of new Set([...storeMaxInvDateMap.keys(), ...storeMaxOrderDateMap.keys()])) {
+            let sInvDate = storeMaxInvDateMap.get(storeID) || 0;
+            let sOrderDate = storeMaxOrderDateMap.get(storeID) || 0;
+            let sDeliveryDate = sOrderDate > 0 ? sOrderDate + 86400000 : 0;
+
+            let T = 0;
+            if (sInvDate > 0 && sDeliveryDate > 0) {
+                T = Math.max(sInvDate, sDeliveryDate);
+            } else if (sInvDate > 0) {
+                T = sInvDate;
+            } else {
+                T = sDeliveryDate;
+            }
+            storeMasterDateMap.set(storeID, T);
+        }
+
+        // --- 3. Inventory Aggregation ---
+        const inventoryMap = new Map();
+        window.dateFmtDetected = 0;
+        if (datasets.inventory && datasets.inventory.length > 0) {
+            datasets.inventory.forEach(row => {
+                let store = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'];
+                let prod = row['productname'] || row['listsnphm'] || row['tnsnphm'] || row['tensanphamwm'] || row['articlename'] || row['article'] || row['tensanpham'] || row['productname'];
+                if (!store || !prod) return;
+
+                let storeID = extractSAP(store);
+                if (storeID && isNaN(parseInt(storeID))) {
+                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(store));
+                    if (lookedUp) storeID = lookedUp;
+                }
+                let sName = row['tencuahang'] || row['tncahng'] || row['storename'] || row['store'];
+                if (sName && !storeNamesMap.has(storeID)) storeNamesMap.set(storeID, String(sName).trim());
+
+                let rawDate = row['date'] || row['Date'] || row['ngay'] || row['ngày'] || 0;
+                let cDate = parseDateStrToTime(rawDate);
+
+                let T = storeMasterDateMap.get(storeID);
+                if (!T || cDate > T) return;
+
+                let prodStd = normalizeProductName(prod);
+                if (!prodStd) {
+                    unmappedProducts.add(String(prod).trim());
+                    return;
+                }
+                let key = `${storeID}_${prodStd.toLowerCase()}`;
+
+                // ... (Quy đổi kg)
+                let invStr = String(row['tonkho'] || row['stock'] || row['ton'] || row['inventory'] || row['inventoryquantity'] || row['inventoryamount'] || row['stkinv'] || '');
+                let dispStr = String(row['huy'] || row['disposal'] || row['scrap'] || row['tonhuy'] || row['disposalquantity'] || row['disposalamount'] || '');
+                let inputStr = String(row['import amount'] || row['importamount'] || row['nhap'] || row['nhapinput'] || '');
+
+                let inv = Number(invStr.replace(/,/g, '')) || 0;
+                let disp = Number(dispStr.replace(/,/g, '')) || 0;
+                let inputAmt = Number(inputStr.replace(/,/g, '')) || 0;
+
+                let hasInv = invStr.trim() !== '';
+                let hasDisp = dispStr.trim() !== '';
+                let hasInput = inputStr.trim() !== '';
+
+                if (prod && String(prod).toLowerCase().includes('retail kg')) {
+                    inv = inv / 1000;
+                    disp = disp / 1000;
+                    inputAmt = inputAmt / 1000;
+                }
+
+                if (!inventoryMap.has(key)) {
+                    inventoryMap.set(key, {
+                        latestInvDate: 0, sumInv: 0,
+                        latestInputDate: 0, sumInput: 0,
+                        latestDispDate: 0, sumDisp: 0,
+                        prevInv: 0, prevInvDate: 0,
+                        prevInput: 0, prevInputDate: 0,
+                        prodOrig: prodStd, storeID: storeID
+                    });
+                }
+
+                let data = inventoryMap.get(key);
+                if (hasInv) {
+                    if (cDate > data.latestInvDate) {
+                        data.latestInvDate = cDate;
+                        data.sumInv = inv;
+                    } else if (cDate === data.latestInvDate) {
+                        data.sumInv += inv;
+                    }
+                    if (cDate < T) {
+                        if (cDate > data.prevInvDate) {
+                            data.prevInvDate = cDate;
+                            data.prevInv = inv;
+                        } else if (cDate === data.prevInvDate) {
+                            data.prevInv += inv;
+                        }
+                    }
+                }
+
+                if (hasInput) {
+                    if (cDate > data.latestInputDate) {
+                        data.latestInputDate = cDate;
+                        data.sumInput = inputAmt;
+                    } else if (cDate === data.latestInputDate) {
+                        data.sumInput += inputAmt;
+                    }
+                    if (cDate < T) {
+                        if (cDate > data.prevInputDate) {
+                            data.prevInputDate = cDate;
+                            data.prevInput = inputAmt;
+                        } else if (cDate === data.prevInputDate) {
+                            data.prevInput += inputAmt;
+                        }
+                    }
+                }
+
+                if (hasDisp) {
+                    if (cDate > data.latestDispDate) {
+                        data.latestDispDate = cDate;
+                        data.sumDisp = disp;
+                    } else if (cDate === data.latestDispDate) {
+                        data.sumDisp += disp;
+                    }
+                }
+            });
+        }
+
+        // ----------- 4. Input ODA Aggregation -----------
+        const inputMap = new Map();
+        const actualODA_Names = new Map(); // Lưu Tên ODA chuẩn nhất từ file vận hành
+        let globalLatestOdaDate = 0;
+
+        window.dateFmtDetected = 0;
+        if (datasets.input && datasets.input.length > 0) {
+            datasets.input.forEach(row => {
+                let prod = row['productnameprimarylanguage'] || row['productname'] || row['product'] || row['tensanphamwm'] || row['tensanpham'] || row['articlename'] || row['article'];
+                let status = String(row['orderstatus'] || row['status'] || row['trangthai'] || '').toLowerCase();
+                
+                if (!prod) return;
+                // Lọc bỏ hàng Hủy / Đã hoàn (Chỉ lấy Completed)
+                if (status && (status.includes('cancel') || status.includes('hủy') || status.includes('reject'))) return;
+
+                let rawSap = extractSAP(row['sap'] || row['storecode'] || row['mach'] || row['macuahang'] || row['sapcode']);
+                let nick = row['nickname'] || row['storename'] || row['store'] || row['tencuahang'] || row['sap'] || '';
+                let storeID = resolveStoreID(rawSap, nick);
+                if (!storeID) return;
+                let exactODAName = String(prod).trim();
+                let prodStd = normalizeProductName(prod);
+                if (!prodStd) {
+                    unmappedProducts.add(String(prod).trim());
+                    return;
+                }
+
+                let key = `${storeID}_${prodStd.toLowerCase()}`;
+                actualODA_Names.set(prodStd.toLowerCase(), exactODAName);
+
+                let dQty = row['deliveredqty'] !== undefined ? row['deliveredqty'] : row['slgiao'];
+                let valStr = "";
+                if (dQty !== undefined && String(dQty).trim() !== "") {
+                    valStr = String(dQty);
+                } else {
+                    let oQty = row['orderedqty'] || row['orderqty'] || row['quantity'] || row['orderitemqty'] || row['quantityorder'] || row['sldat'] || row['sldathang'] || row['totalqty'] || row['soluong'] || row['soluongnhap'] || row['inputquantity'] || row['sum'] || row['total'] || row['qty'];
+                    valStr = String(oQty || '0');
+                }
+                let qty = Number(valStr.replace(/,/g, ''));
+
+                // Trích xuất ngày giao hàng/nhập hàng
+                let rawDate = row['orderdate'] || row['Order date'] || row['completeddate'] || row['Completed date'] || row['date'] || row['ngaydathang'] || row['ngay'] || row['ngaytao'] || row['createddate'] || 0;
+                let cOrderDate = parseDateStrToTime(rawDate);
+                let cDeliveryDate = cOrderDate > 0 ? cOrderDate + 86400000 : 0; // Cộng thêm 1 ngày giao
+
+                let T = storeMasterDateMap.get(storeID);
+                if (!T || cDeliveryDate > T) return;
+
+                if (!inputMap.has(key)) {
+                    inputMap.set(key, {
+                        currentInput: 0,
+                        prevInput: 0, prevInputDate: 0,
+                        prodOrig: exactODAName
+                    });
+                }
+
+                let current = inputMap.get(key);
+                if (cDeliveryDate === T) {
+                    current.currentInput += qty;
+                } else if (cDeliveryDate < T) {
+                    if (cDeliveryDate > current.prevInputDate) {
+                        current.prevInputDate = cDeliveryDate;
+                        current.prevInput = qty;
+                    } else if (cDeliveryDate === current.prevInputDate) {
+                        current.prevInput += qty;
+                    }
+                }
+            });
+        }
+
+        // Hàm lấy lại Tên Chuẩn nhất (Ưu tiên ODA thật > Mapping > Raw)
+        const getBestAvailableName = (mappedName) => {
+            if (!mappedName) return '';
+            let k = String(mappedName).toLowerCase();
+            return actualODA_Names.has(k) ? actualODA_Names.get(k) : mappedName;
+        }
+
+        // ----------- 5. Sales Data (Flat Transaction Aggregation) -----------
+        // Trong file thực tế: Dữ liệu doanh số bán nằm từng dòng, cột "POS Quantity"
+        const monthlySales = new Map();
+        const storeMonthlyDays = new Map(); // All days
+        const storeGroupDays = new Map();  // storeID -> { weekdays: Set, weekends: Set }
+        const globalMonthlyDays = new Set();
+        const globalMonthlyGroupDays = { weekdays: new Set(), weekends: new Set() };
+        let globalMonthlyMaxTs = 0;
+
+        const processMonthlyData = (dataArr) => {
+            if (!dataArr || dataArr.length === 0) return;
+            dataArr.forEach(row => {
+                let st = row['sap'] || row['storecode'] || row['sapcode'] || row['store'] || row['nickname'] || row['storename'] || row['tencuahang'];
+                let pr = row['tnsnphmwm'] || row['tensanphamwm'] || row['tnsnphm'] || row['tensanpham'] || row['productname'] || row['articlename'] || row['article'];
+                let qty = Number(String(row['posquantity'] || row['quantity'] || row['soluong'] || row['sum'] || '0').replace(/,/g, ''));
+                if (pr && String(pr).toLowerCase().includes('retail kg')) qty /= 1000;
+
+                let storeID = extractSAP(st);
+                
+                // Hỗ trợ Fallback Lookup cho Monthly Sales y chang Weekly
+                if (storeID && isNaN(parseInt(storeID))) {
+                    let lookedUp = reverseStoreNamesMap.get(normalizeKey(st));
+                    if (lookedUp) storeID = lookedUp;
+                }
+
+                let rawDate = String(row['calendarday'] || row['date'] || row['ngay'] || '').trim();
+
+                if (rawDate) {
+                    let cbDate = parseDateStrToTime(rawDate);
+                    if (cbDate > 0) {
+                        globalMonthlyDays.add(cbDate);
+                        if (cbDate > globalMonthlyMaxTs) globalMonthlyMaxTs = cbDate;
+                        let cbDayOfWeek = new Date(cbDate).getDay();
+                        if (cbDayOfWeek === 6 || cbDayOfWeek === 0) {
+                            globalMonthlyGroupDays.weekends.add(cbDate);
+                        } else {
+                            globalMonthlyGroupDays.weekdays.add(cbDate);
+                        }
+                    }
+                }
+
+                // Đăng ký Tên/Nickname từ file Doanh số (ODA)
+                if (storeID) {
+                    let sName = row['storename'] || row['store'] || row['têncửahàng'] || '';
+                    let nickname = row['nickname'] || '';
+                    if (!storeAliasesMap.has(storeID)) storeAliasesMap.set(storeID, new Set());
+                    if (sName) storeAliasesMap.get(storeID).add(normalizeKey(sName));
+                    if (nickname) storeAliasesMap.get(storeID).add(normalizeKey(nickname));
+                    storeAliasesMap.get(storeID).add(normalizeKey(storeID));
+                    
+                    if (sName && !storeNamesMap.has(storeID)) storeNamesMap.set(storeID, sName);
+                }
+
+                if (rawDate && storeID) {
+                    if (!storeMonthlyDays.has(storeID)) storeMonthlyDays.set(storeID, new Set());
+                    storeMonthlyDays.get(storeID).add(rawDate);
+
+                    if (!storeGroupDays.has(storeID)) {
+                        storeGroupDays.set(storeID, { weekdays: new Set(), weekends: new Set() });
+                    }
+                    let cDate = parseDateStrToTime(rawDate);
+                    let dayOfWeek = new Date(cDate).getDay();
+                    let isWknd = (dayOfWeek === 6 || dayOfWeek === 0);
+                    if (isWknd) storeGroupDays.get(storeID).weekends.add(rawDate);
+                    else storeGroupDays.get(storeID).weekdays.add(rawDate);
+
+                    if (!st || !pr || isNaN(qty)) return;
+
+                    let prodStd = normalizeProductName(pr);
+                    if (!prodStd) {
+                        unmappedProducts.add(String(pr).trim());
+                        return;
+                    }
+                    let key = `${storeID}_${prodStd.toLowerCase()}`;
+
+                    if (!monthlySales.has(key)) {
+                        monthlySales.set(key, {
+                            storeOrig: st,
+                            prodStd,
+                            totalQty: qty,
+                            weekdayQty: isWknd ? 0 : qty,
+                            weekendQty: isWknd ? qty : 0,
+                            minDateTs: qty > 0 ? cDate : 0
+                        });
+                    } else {
+                        let data = monthlySales.get(key);
+                        data.totalQty += qty;
+                        if (isWknd) data.weekendQty += qty;
+                        else data.weekdayQty += qty;
+                        if (qty > 0 && cDate > 0 && (data.minDateTs === 0 || cDate < data.minDateTs)) {
+                            data.minDateTs = cDate;
+                        }
+                    }
+                }
+            });
+        };
+
+        processMonthlyData(datasets.monthly);
+        
+        // Build lần 2: Bổ sung thêm Alias nếu file Doanh Thu Tháng có ghi nhận tên/nickname mới
+        buildReverseMap();
+
+        const weeklySales = new Map();
+        const storeWeeklyDays = new Map();
+        const storeWeeklyGroupDays = new Map();
+        const globalWeeklyDays = new Set();
+        const globalWeeklyGroupDays = { weekdays: new Set(), weekends: new Set() };
+        let globalWeeklyMaxTs = 0;
+        if (datasets.weekly && datasets.weekly.length > 0) {
+            datasets.weekly.forEach(row => {
+                // Kiểm tra xem đây là file TRANSACTION (phẳng) hay MATRIX (ngang)
+                let st = row['sap'] || row['storecode'] || row['nickname'] || row['storename'] || row['store'] || row['mach'] || row['tencuahang'];
+                let pr = row['tnsnphmwm'] || row['tensanphamwm'] || row['tnsnphm'] || row['articlename'] || row['article'] || row['tensanpham'] || row['productname'];
+                
+                if (!pr) return;
+                let prodStd = normalizeProductName(pr);
+                if (!prodStd) return;
+
+                if (st) {
+                    // --- DẠNG FILE PHẲNG (TRANSACTION) ---
+                    let storeID = extractSAP(st);
+                    
+                    // Fallback cực mạnh cho ODA: Nếu ô Name/Nickname không chứa Mã SAP dạng số, ta sẽ lookup từ thư viện!
+                    if (storeID && isNaN(parseInt(storeID))) {
+                        let lookedUp = reverseStoreNamesMap.get(normalizeKey(st));
+                        if (lookedUp) storeID = lookedUp;
+                    }
+
+                    let qty = Number(String(row['posquantity'] || row['sum'] || '0').replace(/,/g, ''));
+                    if (pr && String(pr).toLowerCase().includes('retail kg')) qty /= 1000;
+
+                    let rawDate = String(row['calendarday'] || row['date'] || row['ngay'] || '').trim();
+                    let isWknd = false;
+
+                    if (rawDate) {
+                        let cbDate = parseDateStrToTime(rawDate);
+                        if (cbDate > 0) {
+                            globalWeeklyDays.add(cbDate);
+                            if (cbDate > globalWeeklyMaxTs) globalWeeklyMaxTs = cbDate;
+                            let cbDayOfWeek = new Date(cbDate).getDay();
+                            isWknd = (cbDayOfWeek === 6 || cbDayOfWeek === 0);
+                            if (isWknd) globalWeeklyGroupDays.weekends.add(cbDate);
+                            else globalWeeklyGroupDays.weekdays.add(cbDate);
+                        }
+                    }
+
+                    if (rawDate && storeID) {
+                        if (!storeWeeklyDays.has(storeID)) storeWeeklyDays.set(storeID, new Set());
+                        storeWeeklyDays.get(storeID).add(rawDate);
+
+                        if (!storeWeeklyGroupDays.has(storeID)) {
+                            storeWeeklyGroupDays.set(storeID, { weekdays: new Set(), weekends: new Set() });
+                        }
+                        if (isWknd) storeWeeklyGroupDays.get(storeID).weekends.add(rawDate);
+                        else storeWeeklyGroupDays.get(storeID).weekdays.add(rawDate);
+                    }
+
+                    if (isNaN(qty)) return;
+                    let key = `${storeID}_${prodStd.toLowerCase()}`;
+                    let cDate = parseDateStrToTime(rawDate);
+
+                    if (!weeklySales.has(key)) {
+                        weeklySales.set(key, { totalQty: qty, weekdayQty: isWknd ? 0 : qty, weekendQty: isWknd ? qty : 0, minDateTs: qty > 0 ? cDate : 0 });
+                    } else {
+                        let data = weeklySales.get(key);
+                        data.totalQty += qty;
+                        if (isWknd) data.weekendQty += qty;
+                        else data.weekdayQty += qty;
+                        if (qty > 0 && cDate > 0 && (data.minDateTs === 0 || cDate < data.minDateTs)) {
+                            data.minDateTs = cDate;
+                        }
+                    }
+                } else {
+                    // --- DẠNG FILE MA TRẬN (MATRIX - Tên cửa hàng ở tiêu đề cột) ---
+                    // Duyệt từng cột của dòng này
+                    Object.entries(row).forEach(([colKey, qtyVal]) => {
+                        let cKey = String(colKey).trim();
+                        if (!cKey) return;
+
+                        // ƯU TIÊN 1: Tìm xem trong Header có chứa Mã SAP (4-5 số) không?
+                        let sID = "";
+                        let sapMatch = cKey.match(/(\d{4,5})/);
+                        if (sapMatch && reverseStoreNamesMap.has(normalizeKey(sapMatch[1]))) {
+                            sID = reverseStoreNamesMap.get(normalizeKey(sapMatch[1]));
+                        } else {
+                            // ƯU TIÊN 2: Tìm theo Tên/Nickname đã normalize
+                            sID = reverseStoreNamesMap.get(normalizeKey(cKey));
+                        }
+
+                        if (sID) {
+                            let qty = Number(String(qtyVal || '0').replace(/,/g, ''));
+                            if (pr && String(pr).toLowerCase().includes('retail kg')) qty /= 1000;
+                            if (isNaN(qty) || qty === 0) return;
+
+                            let key = `${sID}_${prodStd.toLowerCase()}`;
+                            // Với file Matrix không có ngày, ta mặc định chia đều tỉ lệ 5/2 (5 ngày thường, 2 ngày cuối tuần)
+                            let wQty = qty * (5 / 7);
+                            let eQty = qty * (2 / 7);
+
+                            if (!weeklySales.has(key)) {
+                                weeklySales.set(key, { totalQty: qty, weekdayQty: wQty, weekendQty: eQty });
+                            } else {
+                                let d = weeklySales.get(key);
+                                d.totalQty += qty;
+                                d.weekdayQty += wQty;
+                                d.weekendQty += eQty;
+                            }
+                            
+                            // Giả lập số ngày (5 ngày thường, 2 cuối tuần) để denominator > 0
+                            if (!storeWeeklyDays.has(sID)) storeWeeklyDays.set(sID, new Set(['dummy-w1','dummy-w2','dummy-w3','dummy-w4','dummy-w5','dummy-e1','dummy-e2']));
+                            if (!storeWeeklyGroupDays.has(sID)) {
+                                const dummyDays = { weekdays: new Set(['d1','d2','d3','d4','d5']), weekends: new Set(['d6','d7']) };
+                                storeWeeklyGroupDays.set(sID, dummyDays);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+
+        // ----------- CẢNH BÁO MAPPING LÊN MÀN HÌNH CHÍNH -----------
+        const warningDiv = document.getElementById('mapping-warning-div');
+        if (warningDiv) {
+            if (unmappedProducts.size > 0 && datasets.mapping_raw && datasets.mapping_raw.length > 0) {
+                warningDiv.innerHTML = `<strong style="color: #ff9800; font-size: 1.1em;"><i class="fas fa-exclamation-triangle"></i> Cập nhập thêm sản phẩm: TÌM THẤY ${unmappedProducts.size} SẢN PHẨM MỚI TRONG DOANH SỐ TUẦN!</strong><br>
+            <span style="display:block; margin-top: 8px;">Dưới đây là các mã <b>CHƯA ĐƯỢC GHI NHẬN</b> trong Mapping và đã bị tạm ẩn khỏi bảng SOQ: <br>
+            <i style="color: #fff; background: rgba(255,255,255,0.1); padding: 5px 8px; border-radius: 4px; display: inline-block; margin-top: 5px;">${Array.from(unmappedProducts).slice(0, 15).join(', ')}${unmappedProducts.size > 15 ? '...' : ''}</i></span>`;
+                warningDiv.style.display = 'block';
+            } else {
+                warningDiv.style.display = 'none';
+            }
+        }
+
+
+        // ----------- 6. Final Master Processing -----------
+        const allItems = new Map();
+
+        const registerKey = (key, storeID, storeOrig, rawProdStdName) => {
+            if (!allItems.has(key)) {
+                let bestName = getBestAvailableName(rawProdStdName);
+                // Đã bổ sung prodStd để hàm lọc nhóm hàng có thể map chính xác
+                allItems.set(key, { storeID, storeOrig, bestName, prodStd: String(rawProdStdName || '') });
+            }
+        };
+
+        // 2026-03-31: Đảm bảo tất cả store trong lịch phải được xuất hiện kể cả khi chưa có số bán/tồn
+        let syncKeysSet = new Set([...monthlySales.keys(), ...inventoryMap.keys(), ...inputMap.keys()]);
+        let hasScheduleUploaded = datasets.schedule && datasets.schedule.length > 0;
+
+        if (hasScheduleUploaded) {
+            // Lấy thêm các tổ hợp từ mapping hoặc các dữ liệu khác nếu store đó có trong schedule
+            // Duyệt qua mapping hoặc toàn bộ danh sách sản phẩm đã từng thấy
+            let anyProdStandards = new Set([...standardNamesSet]);
+            // Nếu chưa có mapping, lấy từ Sales/Inventory
+            if (anyProdStandards.size === 0) {
+                monthlySales.forEach(v => anyProdStandards.add(v.prodStd.toLowerCase()));
+                inventoryMap.forEach(v => anyProdStandards.add(v.prodOrig.toLowerCase()));
+                inputMap.forEach(v => anyProdStandards.add(v.prodOrig.toLowerCase()));
+            }
+
+            validSAPs.forEach(sID => {
+                anyProdStandards.forEach(prodName => {
+                    syncKeysSet.add(`${sID}_${prodName.toLowerCase()}`);
+                });
+            });
+        }
+        
+        let syncKeys = Array.from(syncKeysSet);
+
+        syncKeys.forEach(k => {
+            let parts = k.split('_');
+            let storeID = parts[0];
+
+            // Strict Filter Lịch Giao: Nếu có tải file Lịch lên, BẮT BUỘC mã cửa hàng phải có mặt trong validSAPs (vừa check ngày vừa check có list)
+            if (hasScheduleUploaded && !validSAPs.has(storeID)) return;
+
+            let mData = monthlySales.get(k);
+            let iData = inventoryMap.get(k);
+            let inData = inputMap.get(k);
+
+            let storeOrig = mData ? mData.storeOrig : (storeID);
+            let rawProdStdName = mData ? mData.prodStd : (iData ? iData.prodOrig : (inData ? inData.prodOrig : parts[1]));
+
+            registerKey(k, storeID, storeOrig, rawProdStdName);
+        });
+
+        // Block cảnh báo mapping đã được dời lên trên để chạy sớm hơn
+
+        finalResults = [];
+        tbody.innerHTML = '';
+
+        const countPeriodDays = (startTs, globalDaysSet) => {
+            if (startTs === 0 || !globalDaysSet || globalDaysSet.size === 0) return null;
+            let total = 0, weekdays = 0, weekends = 0;
+            globalDaysSet.forEach(ts => {
+                if (ts >= startTs) {
+                    total++;
+                    let d = new Date(ts).getDay();
+                    if (d === 0 || d === 6) weekends++;
+                    else weekdays++;
+                }
+            });
+            if (total === 0) return null;
+            return { total, weekdays, weekends };
+        };
+
+        allItems.forEach((data, key) => {
+            // Chốt số ngày thực tế dựa trên TỔNG SỐ NGÀY GHI NHẬN CỦA TOÀN BỘ FILE (Thay vì chia theo từng cửa hàng)
+            let mDaysCount = globalMonthlyDays.size > 0 ? globalMonthlyDays.size : 30;
+            let wDaysCount = globalWeeklyDays.size > 0 ? globalWeeklyDays.size : 7;
+
+            // Average Daily Sales
+            let mDataExt = monthlySales.get(key);
+            let mTotal = mDataExt ? mDataExt.totalQty : 0;
+            let wDataExt = weeklySales.get(key);
+            let wTotal = wDataExt ? wDataExt.totalQty : 0;
+            let wWeekdayQty = wDataExt ? wDataExt.weekdayQty : 0;
+            let wWeekendQty = wDataExt ? wDataExt.weekendQty : 0;
+
+            let wWeekdayDaysCount = globalWeeklyGroupDays.weekdays.size > 0 ? globalWeeklyGroupDays.weekdays.size : 5;
+            let wWeekendDaysCount = globalWeeklyGroupDays.weekends.size > 0 ? globalWeeklyGroupDays.weekends.size : 2;
+
+            let wWeekdayAds = wWeekdayDaysCount > 0 ? wWeekdayQty / wWeekdayDaysCount : 0;
+            let wWeekendAds = wWeekendDaysCount > 0 ? wWeekendQty / wWeekendDaysCount : 0;
+
+            // --- NEW: Phân tích T2-T5 vs T6-CN ---
+            let weekdayQty = mDataExt ? mDataExt.weekdayQty : 0;
+            let weekendQty = mDataExt ? mDataExt.weekendQty : 0;
+            let weekdayDaysCount = globalMonthlyGroupDays.weekdays.size > 0 ? globalMonthlyGroupDays.weekdays.size : (mDaysCount * 5/7);
+            let weekendDaysCount = globalMonthlyGroupDays.weekends.size > 0 ? globalMonthlyGroupDays.weekends.size : (mDaysCount * 2/7);
+
+            // Ghi đè bằng tuổi thọ cá nhân nếu là hàng mới (Dò theo từng cửa hàng - từng sản phẩm)
+            if (mDataExt && mDataExt.minDateTs > 0) {
+                let lifeSpan = countPeriodDays(mDataExt.minDateTs, globalMonthlyDays);
+                if (lifeSpan) {
+                    mDaysCount = lifeSpan.total;
+                    weekdayDaysCount = lifeSpan.weekdays;
+                    weekendDaysCount = lifeSpan.weekends;
+                }
+            }
+
+            if (wDataExt && wDataExt.minDateTs > 0) {
+                let wLifeSpan = countPeriodDays(wDataExt.minDateTs, globalWeeklyDays);
+                if (wLifeSpan) {
+                    wDaysCount = wLifeSpan.total;
+                    wWeekdayDaysCount = wLifeSpan.weekdays;
+                    wWeekendDaysCount = wLifeSpan.weekends;
+                }
+            }
+
+            let weekdayAds = weekdayDaysCount > 0 ? weekdayQty / weekdayDaysCount : 0;
+            let weekendAds = weekendDaysCount > 0 ? weekendQty / weekendDaysCount : 0;
+
+            let mAds = mTotal / mDaysCount;
+            let wAds = wTotal / wDaysCount;
+
+            let trend = 0;
+            let trendHtml = '-';
+            let trendExport = '0%';
+            let trendFactor = 1;
+
+            if (mAds > 0) {
+                trend = ((wAds - mAds) / mAds) * 100;
+                trendFactor = 1 + (trend / 100);
+                trendExport = `${trend > 0 ? '+' : ''}${trend.toFixed(1)}%`;
+                if (trend > 0) {
+                    trendHtml = `<span style="color: var(--success)">▲ ${trend.toFixed(1)}%</span>`;
+                } else if (trend < 0) {
+                    trendHtml = `<span style="color: var(--danger)">▼ ${Math.abs(trend).toFixed(1)}%</span>`;
+                } else {
+                    trendHtml = `<span>0%</span>`;
+                }
+            } else if (wAds > 0) {
+                trendExport = '100% (New)';
+                trendHtml = `<span style="color: var(--success)">▲ Mới bán</span>`;
+                trendFactor = 1; // Mặc định 1 cho hàng mới
+            }
+
+            // Nếu Weekly ko có thì dùng Monthly làm gốc để dự báo, xu hướng = N/A
+            if (wTotal === 0 && mTotal > 0) {
+                wAds = mAds;
+                trendHtml = `<span style="color: var(--text-muted)">N/A (Tuần 0)</span>`;
+                trendExport = 'N/A';
+                trendFactor = 1;
+            }
+
+            // SỐ TRUNG BÌNH BÁN NGÀY HOÀN TOÀN DỰA VÀO THÁNG
+            let forecastDay = mAds;
+            
+            if (mTotal === 0 && wTotal > 0) {
+                // Hàng siêu mới chỉ có trong tuần
+                forecastDay = wAds;
+                weekdayAds = wWeekdayAds;
+                weekendAds = wWeekendAds;
+            }
+
+            // --- TÍNH TOÁN LEAD TIME TỔNG CỘNG ---
+            // 1. Lead Time Arrival: Từ ngày T (Master Date) đến ngày Giao hàng (Target Delivery)
+            let T = storeMasterDateMap.get(data.storeID) || 0;
+            let invData = inventoryMap.get(key) || { currentInv: 0, currentDisp: 0, prevInv: 0, prevInvDate: 0 };
+            let inputData = inputMap.get(key) || { currentInput: 0, prevInput: 0, prevInputDate: 0 };
+
+            let invDate = T > 0 ? T : new Date().setHours(0, 0, 0, 0);
+            let leadTimeArrival = 0;
+            if (targetTimestamp > 0) {
+                leadTimeArrival = Math.max(0, (targetTimestamp - invDate) / (1000 * 60 * 60 * 24));
+            }
+
+            // 2. Coverage Leadtime: Khoảng cách giữa các đợt giao (lấy từ matrix lịch)
+            let coverageLT = scheduleLeadtimeMap.has(data.storeID) ? scheduleLeadtimeMap.get(data.storeID) : extractLeadtimeFromFilename(scheduleFileName);
+
+            let totalLeadtime = leadTimeArrival + coverageLT;
+            
+            let basePeriodDemand = calculatePeriodDemand(invDate, totalLeadtime, weekdayAds, weekendAds);
+            
+            // Tách Demand dự kiến lúc chờ hàng (tránh âm kho dồn vào SOQ gây overstock)
+            let leadTimeDemandBase = calculatePeriodDemand(invDate, leadTimeArrival, weekdayAds, weekendAds);
+            let demandLeadTime = leadTimeDemandBase;
+
+            // Demand kỳ bán SOQ (Chỉ tính Coverage)
+            let coverageStartDate = invDate + (leadTimeArrival * 24 * 60 * 60 * 1000);
+            let coverageDemandBase = calculatePeriodDemand(coverageStartDate, coverageLT, weekdayAds, weekendAds);
+            let totalDemand = coverageDemandBase;
+
+            // --- NEW: Tăng trưởng theo Leadtime (Đối chiếu Weekly vs Monthly trên từng Thứ) ---
+            let leadtimeGrowth = 0;
+            let growthHtml = '-';
+
+            let periodAdsMonthly = basePeriodDemand / totalLeadtime;
+            let weeklyPeriodDemand = calculatePeriodDemand(invDate, totalLeadtime, wWeekdayAds, wWeekendAds);
+            let periodAdsWeekly = weeklyPeriodDemand / totalLeadtime;
+
+            if (periodAdsMonthly > 0 && totalLeadtime > 0 && periodAdsWeekly > 0) {
+                leadtimeGrowth = ((periodAdsWeekly - periodAdsMonthly) / periodAdsMonthly) * 100;
+                if (leadtimeGrowth > 0) growthHtml = `<span style="color: var(--success)">+${leadtimeGrowth.toFixed(1)}%</span>`;
+                else if (leadtimeGrowth < 0) growthHtml = `<span style="color: var(--danger)">${leadtimeGrowth.toFixed(1)}%</span>`;
+                else growthHtml = `0%`;
+            } else if (basePeriodDemand > 0) {
+                growthHtml = `<span style="color: var(--success)">New</span>`;
+            }
+
+            // Phân loại Tier để nhồi thêm Tồn Kho Tối Thiểu (Safety Stock)
+            let tierLevel = 0;
+            if (storeTierMap.has(data.storeID)) {
+                let t = storeTierMap.get(data.storeID);
+                if (t.includes('1') || t === 'T1' || t === 'TIER1' || t === 'TIER 1') {
+                    tierLevel = 1;
+                } else if (t.includes('2') || t === 'T2' || t === 'TIER 2' || t.includes('3') || t === 'T3' || t === 'TIER 3') {
+                    tierLevel = 2; // Gộp Tier 2 và 3 xài chung rate
+                }
+            }
+
+            let safetyStock = 0;
+            if (forecastDay > 0) {
+                if (tierLevel === 1) {
+                    safetyStock = isWeekendDelivery ? (weekendAds * coverageLT * 0.30) : (weekdayAds * coverageLT * 0.15);
+                } else if (tierLevel === 2) {
+                    safetyStock = isWeekendDelivery ? (weekendAds * coverageLT * 0.20) : (weekdayAds * coverageLT * 0.10);
+                }
+                totalDemand += safetyStock;
+            }
+
+            // Sử dụng mốc T để chuẩn hóa Tồn / Nhập đồng bộ (Khởi tạo ở đầu vòng lặp)
+            let penaltyApplied = 0;
+            let finalInv = 0;
+            let finalInput = 0;
+            let finalDisp = invData.sumDisp || 0;
+            
+            if (invData.latestInvDate > invData.latestInputDate) {
+                finalInv = invData.sumInv || 0;
+            } else if (invData.latestInvDate < invData.latestInputDate) {
+                finalInput = invData.sumInput || 0;
+            } else {
+                finalInv = invData.sumInv || 0;
+                finalInput = invData.sumInput || 0;
+            }
+
+            let prevInv = invData.prevInv || 0;
+            let prevInput = invData.prevInput || 0;
+
+            let formatDateStr = (ts) => {
+                if (!ts) return 'N/A';
+                let d = new Date(ts);
+                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+            };
+
+            let expectedInvAtArrival = Math.max(0, finalInv + finalInput - demandLeadTime);
+
+            
